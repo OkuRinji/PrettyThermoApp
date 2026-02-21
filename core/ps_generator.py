@@ -15,7 +15,7 @@ class PSGenerator:
             # 1. Метаданные (строка ~60 символов)
             author = params.get('author', 'Калмыков')
             code = params.get('code', '*')
-            meta = f"Исполнитель : * {author:<10} *   Шифр {code:<10} *            *\n"
+            meta = f"Исполнитель : * {author:<10} *   Шифр {code:<10}   *\n"
             f.write(meta)
             
             # 2. Блок директив NAMELIST RRP
@@ -40,7 +40,23 @@ class PSGenerator:
                 enthalpy_str = f"{comp['enthalpy']:>9.2f}"
                 formula_str = comp['formula']
                 f.write(f"{enthalpy_str}{formula_str}\n")
-        
+            # 7. Участие внешенго окислителя
+            if params['AL'] and params['AL']!=0:
+                f.write(f"N={params['AL_N']}  NB={params['AL_NB']}\n")
+                for variant in params['AL_variants']:
+                    concentrations = ','.join([self._format_conc(x) for x in variant['concentrations']])
+                    f.write(f"{variant['id']},{concentrations}\n")
+                for comp in params['outer_oxy']:
+                    # Энтальпия: 9 символов, выровнено по правому краю
+                    enthalpy_str = f"{comp['enthalpy']:>9.2f}"
+                    formula_str = comp['formula']
+                    f.write(f"{enthalpy_str}{formula_str}\n")
+            
+                
+        # 'outer_oxy':{
+        #             'id': 603,
+        #             'formula': "N 54.8972O 14.4375"                                                    ,
+        #             'enthalpy': 0.00}
         return filepath
     
     def _build_rrp_block(self, directives):
@@ -75,13 +91,21 @@ params1 = {
     'author': 'Калмыков',
     'directives': {'LNN': True, 'TABL': True},
     'PK': 0.1,
+    'AL': 0.2,
     'N': 1,
     'NB': 2,
+    'AL_N': 1,
+    'AL_NB': 1,
     'variants': [{'id': 1, 'concentrations': [50., 50.]}],
+    'AL_variants': [{'id': 1, 'concentrations': [100.]}],
     'components': [
         {'enthalpy': -2463.27, 'formula': 'N H 4.CLO 4.'},
         {'enthalpy': 0.00, 'formula': 'AL18.53MG20.57'}
-    ]
+    ],
+    'outer_oxy':[{
+                    'id': 603,
+                    'formula': "N 54.8972O 14.4375"                                                    ,
+                    'enthalpy': 0.00}]
 }
-a=PSGenerator(r"c:\THERMO")
-a.generate(params1,"new_file12")
+# a=PSGenerator(r"c:\THERMO")
+# a.generate(params1,"Rnd.ps")

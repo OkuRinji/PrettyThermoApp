@@ -43,6 +43,9 @@ class ThermoApp:
         
         ttk.Button(top_frame, text="📝 Параметры", command=self._open_params_dialog, width=15).pack(side='left', padx=5)
         ttk.Button(top_frame, text="📄 Создать .PS", command=self._generate_ps, width=15).pack(side='left', padx=5)
+        self.fn_entry = tk.Entry(top_frame, width=12)
+        self.fn_entry.pack(side='left', padx=5)
+        self.fn_entry.insert(0,"New_file")
         ttk.Button(top_frame, text="▶ Запуск", command=self._run_calculation, width=15).pack(side='left', padx=5)
         ttk.Button(top_frame, text="📊 Результаты", command=self._show_results, width=15).pack(side='left', padx=5)
         
@@ -80,7 +83,8 @@ class ThermoApp:
             messagebox.showwarning("Внимание", "Сначала задайте параметры!")
             return
         try:
-            filepath = self.generator.generate(self.current_params, 'input.ps')
+            fn=self.fn_entry.get()
+            filepath = self.generator.generate(self.current_params, fn+".ps")
             self.output_text.insert('end', f"\n✓ Файл создан: {filepath}\n")
             self.status_var.set("✓ .PS файл создан")
         except Exception as e:
