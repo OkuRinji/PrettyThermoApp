@@ -2,6 +2,7 @@ import json
 import os
 from typing import Dict,List,Optional
 from core.component import Component
+from core.res_parser import ResParser, ResComponent
 
 class CatalogManager:
     "Менджер каталога (синглтон)"
@@ -13,7 +14,7 @@ class CatalogManager:
         if cls._instanse is None:
             cls._instanse=super().__new__(cls)
         return cls._instanse
-    
+
     def __init__(self):
         if CatalogManager._initialized:
             return
@@ -27,7 +28,7 @@ class CatalogManager:
         if not os.path.exists(filepath):
             print(f"⚠ Файл каталога не найден: {filepath}")
             return False
-        
+
         try :
             with open(filepath,"r",encoding="utf-8") as f:
                 data=json.load(f)
@@ -45,6 +46,37 @@ class CatalogManager:
             return True
         except Exception as e :
             print(f"Ошибка загрузки каталога {e}")
+            return False
+
+    def load_from_res(self, filepath: str) -> bool:
+        "Загрузка компонентов из .res файла"
+        if not os.path.exists(filepath):
+            print(f"⚠ Файл .res не найден: {filepath}")
+            return False
+
+        try:
+            parser = ResParser(filepath)
+            data = parser.parse()
+
+            # Получаем существующие ID для маппинга
+            existing_ids = set(self.components.keys())
+            max_id = max(existing_ids) if existing_ids else 0
+
+            for idx, res_comp in enumerate(data.components):
+                comp_id = max_id + idx + 1
+                comp = Component(
+                    id=comp_id,
+                    name=res_comp.name,
+                    formula=res_comp.name,  # Используем name как формулу
+                    enthalpy=res_comp.hf298
+                )
+                self.components[comp.id] = comp
+                self.name_index[comp.name.lower()] = comp.id
+
+            print(f"Загружено {len(data.components)} компонентов из {filepath}")
+            return True
+        except Exception as e:
+            print(f"Ошибка загрузки из .res: {e}")
             return False
     def search(self, query: str) -> List[Component]:
         """Поиск компонентов по названию или формуле"""
@@ -81,7 +113,3 @@ class CatalogManager:
         return sorted(categories)
     def get_count(self):
         return len(self.components)
-    
-a=CatalogManager()
-
-a.load_fromJson("core/components_clean.json")

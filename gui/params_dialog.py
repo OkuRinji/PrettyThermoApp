@@ -58,7 +58,10 @@ class ParamsDialog:
     
     def _create_widgets(self):
         """Создает все виджеты окна"""
-        
+
+        # Флаг изменения количества компонентов
+        self.nb_changed = False
+
         # Главный контейнер с прокруткой
         main_canvas = tk.Canvas(self.dialog)
         scrollbar = ttk.Scrollbar(self.dialog, orient="vertical", command=main_canvas.yview)
@@ -71,9 +74,14 @@ class ParamsDialog:
         
         main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         main_canvas.configure(yscrollcommand=scrollbar.set)
-        
+
         main_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        # Прокрутка колесиком
+        def _on_mousewheel(event):
+            main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         # === Секция 1: Метаданные ===
         meta_frame = ttk.LabelFrame(scrollable_frame, text="📋 Метаданные", padding=10)
@@ -136,6 +144,7 @@ class ParamsDialog:
         ttk.Label(count_frame, text="Компонентов (NB):").pack(side='left', padx=5)
         self.nb_entry = ttk.Entry(count_frame, width=5)
         self.nb_entry.pack(side='left', padx=5)
+        self.nb_entry.bind('<KeyRelease>', lambda e: self._on_nb_changed())
 
         ttk.Label(count_frame, text="Количество вариаций (Vars):").pack(side='left', padx=5)
         self.var_entry = ttk.Entry(count_frame, width=5)
@@ -256,21 +265,22 @@ class ParamsDialog:
         
         for var_num in range(var_cnt):
             self.conc_entries.append([])
-            # Разделитель между вариациями
+            # Разделитель между вариациями (перед вариацией, кроме первой)
             if var_num > 0:
                 ttk.Separator(self.variants_frame, orient='horizontal').grid(
-                    row=var_num*nb+1, column=0, columnspan=3, sticky='ew', pady=(15, 5))
-            
-            # Номер вариации с рамкой
+                    row=var_num*(nb+1), column=0, columnspan=3, sticky='ew', pady=(15, 5))
+
+            # Номер вариации с рамкой (смещаем строку на количество сепараторов)
+            var_row = var_num * (nb + 1) + 1
             var_label = ttk.Label(
-                self.variants_frame, 
-                text=str(var_num+1), 
-                font=('TkDefaultFont', 9, 'bold'), 
-                relief='ridge', 
+                self.variants_frame,
+                text=str(var_num+1),
+                font=('TkDefaultFont', 9, 'bold'),
+                relief='ridge',
                 padding=5,
                 borderwidth=2
             )
-            var_label.grid(row=var_num*nb+1, column=0, rowspan=nb, padx=3, pady=3, sticky='ns')
+            var_label.grid(row=var_row, column=0, rowspan=nb, padx=3, pady=3, sticky='ns')
             
             for comp in range(nb):
                 # Получаем название компонента из кнопки
@@ -279,12 +289,13 @@ class ParamsDialog:
                     btn_text = self.search_buttons[comp].cget('text')
                     if btn_text and btn_text != "Выберите компонент...":
                         comp_name = btn_text
-                
+
+                comp_row = var_row + comp
                 comp_label = ttk.Label(self.variants_frame, text=comp_name, anchor='w', width=30)
-                comp_label.grid(row=var_num*nb+comp+1, column=1, padx=3, pady=2, sticky='w')
-                
+                comp_label.grid(row=comp_row, column=1, padx=3, pady=2, sticky='w')
+
                 conc_entry = ttk.Entry(self.variants_frame, width=10)
-                conc_entry.grid(row=var_num*nb+comp+1, column=2, padx=3, pady=2)
+                conc_entry.grid(row=comp_row, column=2, padx=3, pady=2)
                 conc_entry.insert(0, f"{100/nb:.1f}")
                 self.conc_entries[-1].append(conc_entry)
 
@@ -353,7 +364,12 @@ class ParamsDialog:
                     if comp_idx < len(self.conc_entries[var_idx]) and value:
                         self.conc_entries[var_idx][comp_idx].delete(0, 'end')
                         self.conc_entries[var_idx][comp_idx].insert(0, value)
-        
+
+        # Пересчитываем концентрации на равные доли (100/NB) только если NB изменилось
+        if self.nb_changed:
+            self._recalculate_concentrations()
+            self.nb_changed = False  # Сбрасываем флаг после пересчета
+
         # Обновляем названия компонентов в вариациях
         self._update_variants_labels()
     
@@ -361,9 +377,10 @@ class ParamsDialog:
         """Обновляет названия компонентов в сетке вариаций"""
         nb = int(self.nb_entry.get()) if self.nb_entry.get() else 2
         var_cnt = int(self.var_entry.get()) if self.var_entry.get() else 1
-        
+
         # Обновляем названия компонентов для каждой вариации
         for var_num in range(var_cnt):
+            var_row = var_num * (nb + 1) + 1
             for comp in range(nb):
                 # Получаем название компонента из кнопки
                 comp_name = "Комп. " + str(comp+1)
@@ -371,15 +388,41 @@ class ParamsDialog:
                     btn_text = self.search_buttons[comp].cget('text')
                     if btn_text and btn_text != "Выберите компонент...":
                         comp_name = btn_text
-                
+
                 # Находим и обновляем label в сетке
-                row = var_num * nb + comp + 1
+                row = var_row + comp
                 for widget in self.variants_frame.grid_slaves(row=row, column=1):
                     if isinstance(widget, ttk.Label):
                         widget.config(text=comp_name, anchor='w', width=30)
+
+    def _recalculate_concentrations(self):
+        """Пересчитывает концентрации при изменении количества компонентов"""
+        try:
+            nb = int(self.nb_entry.get()) if self.nb_entry.get() else 2
+            if nb <= 0:
+                return
+            
+            # Новая концентрация для каждого компонента
+            new_conc = 100.0 / nb
+            
+            # Обновляем все поля концентраций
+            for var_entries in self.conc_entries:
+                for i, entry in enumerate(var_entries):
+                    if i < nb:
+                        entry.delete(0, 'end')
+                        entry.insert(0, f"{new_conc:.1f}")
+        except (ValueError, TypeError):
+            pass
+
+    def _on_nb_changed(self):
+        """Отслеживает изменение количества компонентов"""
+        self.nb_changed = True
     
     def _load_params(self, params: Dict):
         """Загружает параметры в виджеты"""
+        # Сбрасываем флаг при загрузке
+        self.nb_changed = False
+        
         self.author_entry.insert(0, params.get('author', ''))
         self.code_entry.insert(0, params.get('code', '*'))
 
