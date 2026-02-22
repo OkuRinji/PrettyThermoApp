@@ -94,7 +94,8 @@ class ThermoApp:
             messagebox.showerror("Ошибка", str(e))
     
     def _run_calculation(self):
-        input_ps = self.work_dir / "input.ps"
+        fn=self.fn_entry.get()
+        input_ps = self.work_dir / str(fn+".ps")
         if not input_ps.exists():
             messagebox.showwarning("Внимание", "Сначала создайте .PS файл!")
             return

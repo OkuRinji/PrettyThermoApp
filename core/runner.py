@@ -13,10 +13,10 @@ class DOSBoxRunner:
         """
         commands = [
             self.dosbox_path,
-            # '-c', f'mount c {self.work_dir}',
-            # '-c', 'c:',
-            # '-c', f'keyb ru,866',
+            '-c', f'mount c {self.work_dir}',
+            '-c', 'c:',
             '-c', f'{exe_name}',
+            '-c', 'exit'
         ]
         
         try:
