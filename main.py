@@ -8,7 +8,15 @@ from core.res_parser import ResParser
 from core.runner import DOSBoxRunner
 from gui.params_dialog import ParamsDialog
 import os
+import sys
 from io import StringIO
+
+def get_base_path():
+    """Получить базовый путь: для exe - папка с exe, для .py - папка проекта"""
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    else:
+        return Path(__file__).parent.parent
 
 class ThermoApp:
     def __init__(self, root):
@@ -17,7 +25,8 @@ class ThermoApp:
         self.root.geometry("1100x750")
 
         # Пути - рабочая директория TERMO в проекте
-        self.work_dir = Path(__file__).parent.parent / "TERMO"
+        self.base_path = get_base_path()
+        self.work_dir = self.base_path / "TERMO"
         self.dosbox_path = r"C:\Program Files (x86)\DOSBox-0.74-3\DOSBox.exe"
         self.catalog_path = self.work_dir / "components.json"
         self.comp_ps_path = self.work_dir / "COMP.PS"
