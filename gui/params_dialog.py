@@ -1,7 +1,7 @@
 # gui/params_dialog.py
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any
 from core.catalog_manager import CatalogManager
 from gui.component_search import ComponentSearchDialog
 
@@ -105,10 +105,12 @@ class ParamsDialog:
         )
         self.author_entry = ttk.Entry(meta_frame, width=40)
         self.author_entry.grid(row=0, column=1, padx=5, pady=2)
+        self.author_entry.bind("<FocusIn>", self._on_focus_in)
 
         ttk.Label(meta_frame, text="Шифр:").grid(row=0, column=2, sticky="w", pady=2)
         self.code_entry = ttk.Entry(meta_frame, width=20)
         self.code_entry.grid(row=0, column=3, padx=5, pady=2)
+        self.code_entry.bind("<FocusIn>", self._on_focus_in)
 
         # === Секция 2: Директивы ===
         dir_frame = ttk.LabelFrame(
@@ -118,13 +120,11 @@ class ParamsDialog:
 
         self.directive_vars = {}
         directives_list = [
-            ("LDY", "Расчет параметров ДУ/генератора"),
             ("LNN", "Концентрации в молях на 1 кг"),
             ("TABL", "Оформление в виде таблицы"),
-            ("WPS", "Выдача состава продуктов"),
             ("LVM", "Концентрации: газ-объем%, конд-масса%"),
             ("LMM", "Концентрации в массовых долях"),
-            ("LTF", "Расчет теплопроводности и вязкости"),
+            
         ]
 
         for i, (code, desc) in enumerate(directives_list):
@@ -144,12 +144,14 @@ class ParamsDialog:
         )
         self.pk_entry = ttk.Entry(proc_frame, width=15)
         self.pk_entry.grid(row=0, column=1, padx=5, pady=2)
+        self.pk_entry.bind("<FocusIn>", self._on_focus_in)
 
         ttk.Label(proc_frame, text="PC - Давление на срезе (МПа):").grid(
             row=0, column=2, sticky="w", pady=2
         )
         self.pc_entry = ttk.Entry(proc_frame, width=15)
         self.pc_entry.grid(row=0, column=3, padx=5, pady=2)
+        self.pc_entry.bind("<FocusIn>", self._on_focus_in)
 
         ttk.Label(proc_frame, text="AL - Участие внешнего окислителя").grid(
             row=1, column=0, sticky="w", pady=2
@@ -157,6 +159,7 @@ class ParamsDialog:
         self.al_entry = ttk.Entry(proc_frame, width=15)
         self.al_entry.grid(row=1, column=1, padx=5, pady=2)
         self.al_entry.insert(0, "0")
+        self.al_entry.bind("<FocusIn>", self._on_focus_in)
 
         # === Секция 4: Рецептура ===
         recipe_frame = ttk.LabelFrame(
@@ -172,12 +175,14 @@ class ParamsDialog:
         self.nb_entry = ttk.Entry(count_frame, width=5)
         self.nb_entry.pack(side="left", padx=5)
         self.nb_entry.bind("<KeyRelease>", lambda e: self._on_nb_changed())
+        self.nb_entry.bind("<FocusIn>", self._on_focus_in)
 
         ttk.Label(count_frame, text="Количество вариаций (Vars):").pack(
             side="left", padx=5
         )
         self.var_entry = ttk.Entry(count_frame, width=5)
         self.var_entry.pack(side="left", padx=5)
+        self.var_entry.bind("<FocusIn>", self._on_focus_in)
 
         ttk.Button(
             count_frame, text="Применить", command=self._update_components_grid
@@ -388,6 +393,7 @@ class ParamsDialog:
                 conc_entry = ttk.Entry(self.variants_frame, width=10)
                 conc_entry.grid(row=comp_row, column=2, padx=3, pady=2)
                 conc_entry.insert(0, f"{100 / nb:.1f}")
+                conc_entry.bind("<FocusIn>", self._on_focus_in)
                 self.conc_entries[-1].append(conc_entry)
 
     def _update_components_grid(self):
@@ -589,8 +595,230 @@ class ParamsDialog:
             # Обновляем названия компонентов в вариациях
             self._update_variants_labels()
 
+    def _on_focus_in(self, event):
+        """Восстанавливает цвет текста при получении фокуса"""
+        widget = event.widget
+        # Просто возвращаем стандартный стиль (чёрный текст)
+        widget.configure(style="TEntry")
+
+    def _clear_validation_errors(self):
+        """Сбрасывает все подсветки ошибок"""
+        style = ttk.Style()
+        
+        # Сброс для полей ввода
+        widgets_to_check: List[Any] = [
+            self.author_entry,
+            self.code_entry,
+            self.pk_entry,
+            self.pc_entry,
+            self.al_entry,
+            self.nb_entry,
+            self.var_entry,
+        ]
+        for widget in widgets_to_check:
+            widget.configure(style="TEntry")
+
+        # Сброс для кнопок поиска компонентов
+        for btn in self.search_buttons:
+            btn.configure(style="TButton")
+        for btn in self.oxy_search_buttons:
+            btn.configure(style="TButton")
+
+        # Сброс для полей концентраций
+        for var_entries in self.conc_entries:
+            for entry in var_entries:
+                entry.configure(style="TEntry")
+
+    def _highlight_error(self, widget, message: str):
+        """Делает текст поля красным"""
+        style = ttk.Style()
+        
+        # Для Entry виджетов - красный текст
+        if isinstance(widget, ttk.Entry):
+            widget_id = str(widget)
+            style_name = f"Error.{widget_id}.TEntry"
+            style.configure(style_name, foreground="red")
+            widget.configure(style=style_name)
+            
+        # Для кнопок - меняем стиль
+        elif isinstance(widget, ttk.Button):
+            widget_id = str(widget)
+            style_name = f"Error.{widget_id}.TButton"
+            style.configure(style_name, foreground="red")
+            widget.configure(style=style_name)
+
+    def _is_float(self, value: str) -> bool:
+        """Проверяет, можно ли строку преобразовать в float"""
+        try:
+            float(value)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    def _validate_params(self) -> tuple[bool, str, List[tuple]]:
+        """
+        Валидирует все введённые параметры.
+        Возвращает кортеж (успех, сообщение_об_ошибке, список_виджетов_с_ошибками).
+        """
+        errors = []
+        error_widgets: List[tuple] = []  # (виджет, сообщение)
+
+        # === Проверка числовых полей процесса ===
+        pk_str = self.pk_entry.get().strip()
+        if not pk_str:
+            errors.append("PK не указано")
+            error_widgets.append((self.pk_entry, "PK не указано"))
+        else:
+            try:
+                pk = float(pk_str)
+                if pk <= 0:
+                    errors.append("PK (давление в камере) должно быть > 0")
+                    error_widgets.append((self.pk_entry, "PK должно быть > 0"))
+            except ValueError:
+                errors.append("PK должно быть числовым значением")
+                error_widgets.append((self.pk_entry, "PK должно быть числом"))
+
+        pc_str = self.pc_entry.get().strip()
+        if not pc_str:
+            errors.append("PC не указано")
+            error_widgets.append((self.pc_entry, "PC не указано"))
+        else:
+            try:
+                pc = float(pc_str)
+                if pc <= 0:
+                    errors.append("PC (давление на срезе) должно быть > 0")
+                    error_widgets.append((self.pc_entry, "PC должно быть > 0"))
+            except ValueError:
+                errors.append("PC должно быть числовым значением")
+                error_widgets.append((self.pc_entry, "PC должно быть числом"))
+
+        al_str = self.al_entry.get().strip()
+        if not al_str:
+            errors.append("AL не указано")
+            error_widgets.append((self.al_entry, "AL не указано"))
+        else:
+            try:
+                al = float(al_str)
+                if al < 0:
+                    errors.append("AL (участие окислителя) должно быть ≥ 0")
+                    error_widgets.append((self.al_entry, "AL должно быть ≥ 0"))
+            except ValueError:
+                errors.append("AL должно быть числовым значением")
+                error_widgets.append((self.al_entry, "AL должно быть числом"))
+
+        # === Проверка кода ===
+        code = self.code_entry.get().strip()
+        if not code:
+            errors.append("Код не может быть пустым")
+            error_widgets.append((self.code_entry, "Код не может быть пустым"))
+
+        # === Проверка количества компонентов и вариаций ===
+        nb_str = self.nb_entry.get().strip()
+        if not nb_str:
+            errors.append("Количество компонентов не указано")
+            error_widgets.append((self.nb_entry, "Не указано"))
+        else:
+            try:
+                nb = int(nb_str)
+                if nb < 2:
+                    errors.append("Количество компонентов должно быть ≥ 2")
+                    error_widgets.append((self.nb_entry, "Должно быть ≥ 2"))
+            except ValueError:
+                errors.append("Количество компонентов должно быть целым числом")
+                error_widgets.append((self.nb_entry, "Должно быть целым числом"))
+
+        n_str = self.var_entry.get().strip()
+        if not n_str:
+            errors.append("Количество вариаций не указано")
+            error_widgets.append((self.var_entry, "Не указано"))
+        else:
+            try:
+                n = int(n_str)
+                if n < 1:
+                    errors.append("Количество вариаций должно быть ≥ 1")
+                    error_widgets.append((self.var_entry, "Должно быть ≥ 1"))
+            except ValueError:
+                errors.append("Количество вариаций должно быть целым числом")
+                error_widgets.append((self.var_entry, "Должно быть целым числом"))
+
+        # === Проверка выбора компонентов ===
+        nb = int(nb_str) if nb_str.isdigit() else 0
+        for i in range(nb):
+            button_text = self.search_buttons[i].cget("text")
+            if button_text == "Выберите компонент...":
+                errors.append(f"Не выбран компонент № {i + 1}")
+                error_widgets.append((self.search_buttons[i], f"Компонент № {i + 1}"))
+
+            comp_id_str = self.id_entries[i].cget("text").strip()
+            if not comp_id_str or comp_id_str == "0":
+                errors.append(f"Компонент № {i + 1}: не выбран из каталога")
+                error_widgets.append((self.search_buttons[i], f"Компонент № {i + 1}"))
+
+        # === Проверка внешнего окислителя ===
+        al = float(al_str) if self._is_float(al_str) else 0
+        if al != 0:
+            if len(self.oxy_id_entries) > 0:
+                button_text = self.oxy_search_buttons[0].cget("text")
+                if button_text == "Выберите компонент...":
+                    errors.append("Не выбран внешний окислитель")
+                    error_widgets.append((self.oxy_search_buttons[0], "Внешний окислитель"))
+
+                oxy_id_str = self.oxy_id_entries[0].cget("text").strip()
+                if not oxy_id_str or oxy_id_str == "0":
+                    errors.append("Внешний окислитель: не выбран из каталога")
+                    error_widgets.append((self.oxy_search_buttons[0], "Внешний окислитель"))
+
+        # === Проверка концентраций ===
+        for var_idx, var_entries in enumerate(self.conc_entries):
+            concentrations = []
+            has_error_in_variant = False
+            for entry in var_entries:
+                val_str = entry.get().strip()
+                if val_str:
+                    try:
+                        val = float(val_str)
+                        if val < 0:
+                            errors.append(
+                                f"В вариации № {var_idx + 1}: отрицательная концентрация"
+                            )
+                            error_widgets.append((entry, "Отрицательная"))
+                            has_error_in_variant = True
+                        concentrations.append(val)
+                    except ValueError:
+                        errors.append(f"Концентрация должна быть числом")
+                        error_widgets.append((entry, "Не число"))
+                        has_error_in_variant = True
+                else:
+                    concentrations.append(0.0)
+
+            # Проверка суммы с допуском на погрешность float
+            if concentrations:
+                conc_sum = sum(concentrations)
+                if abs(conc_sum - 100.0) > 0.01:
+                    errors.append(
+                        f"В вариации № {var_idx + 1}: сумма = {conc_sum:.2f} (должна быть 100.00)"
+                    )
+                    # Подсвечиваем все поля в этой вариации
+                    for entry in var_entries:
+                        if entry not in [ew[0] for ew in error_widgets]:
+                            error_widgets.append((entry, f"Сумма ≠ 100"))
+
+        if errors:
+            return False, "\n".join(errors), error_widgets
+        return True, "", []
+
     def _on_ok(self):
         """Собирает данные и закрывает окно"""
+        # Сначала валидация
+        is_valid, error_msg, error_widgets = self._validate_params()
+        if not is_valid:
+            # Сбрасываем старую подсветку и подсвечиваем новые ошибки
+            self._clear_validation_errors()
+            for widget, _ in error_widgets:
+                self._highlight_error(widget, "")
+            messagebox.showerror("Ошибка ввода", error_msg)
+            return
+
         try:
             # Директивы
             directives = {}
@@ -620,7 +848,10 @@ class ParamsDialog:
                     enthalpy = float(enthalpy_str) if enthalpy_str else None
                     # Получаем название компонента из текста кнопки
                     button_text = self.oxy_search_buttons[0].cget("text")
-                    name = button_text if button_text != "Выберите компонент..." else ""
+                    name = button_text
+                    if button_text == "Выберите компонент...":
+                        raise ValueError("Не выбран внешний окислитель")
+
                     params["outer_oxy"] = [
                         {
                             "id": comp_id,
@@ -644,8 +875,9 @@ class ParamsDialog:
             for idx in range(len(self.conc_entries)):
                 concentrations = []
                 for entry in self.conc_entries[idx]:
-                    val = entry.get().strip()
-                    concentrations.append(float(val) if val else 0.0)
+                    val_str = entry.get().strip()
+                    val = float(val_str) if val_str else 0.0
+                    concentrations.append(val)
                 variants.append({"id": idx + 1, "concentrations": concentrations})
             params["variants"] = variants
 
@@ -656,9 +888,8 @@ class ParamsDialog:
                 formula = self.formula_entries[i].cget("text").strip()
                 enthalpy_str = self.enthalpy_entries[i].cget("text").strip()
                 enthalpy = float(enthalpy_str) if enthalpy_str else None
-                # Получаем название компонента из текста кнопки
                 button_text = self.search_buttons[i].cget("text")
-                name = button_text if button_text != "Выберите компонент..." else ""
+                name = button_text
 
                 components.append(
                     {
@@ -674,7 +905,8 @@ class ParamsDialog:
             self.dialog.destroy()
 
         except ValueError as e:
-            messagebox.showerror("Ошибка ввода", f"Проверьте числовые значения:\n{e}")
+            messagebox.showerror("Ошибка ввода", str(e))
+            
 
     def _save_template(self):
         """Сохранение шаблона"""

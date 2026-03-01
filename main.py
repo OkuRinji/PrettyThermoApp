@@ -108,7 +108,7 @@ class ThermoApp:
     def _display_params_summary(self, params):
         self.output_text.delete("1.0", "end")
         self.output_text.insert("1.0", "=== ПАРАМЕТРЫ РАСЧЕТА ===\n\n")
-        self.output_text.insert("end", f"Исполнитель: {params.get('author', 'N/A')}\n")
+        self.output_text.insert("end", f"Исполнитель: {params.get('author', 'Каф. ТИПиКМ')}\n")
         self.output_text.insert(
             "end",
             f"Директивы: {', '.join([k for k, v in params.get('directives', {}).items() if v])}\n",
@@ -117,7 +117,17 @@ class ThermoApp:
             "end", f"PK={params.get('PK')}, PC={params.get('PC')}\n"
         )
         self.output_text.insert("end", f"Компонентов: {params.get('NB', 0)}\n")
-
+        self.output_text.insert("end","     Компоненты           Энтальпия    Формула\n")
+        for comp in params["components"]:
+            enthalpy_str = f"{comp['enthalpy']:>9.2f}"
+            formula_str = comp["formula"]
+            name = comp["name"]
+            self.output_text.insert("end",f"{name}  {enthalpy_str}  {formula_str}\n")
+        self.output_text.insert("end","Концентрации\n")
+        for variant in params["variants"]:
+            id=variant["id"]
+            conc=variant["concentrations"]
+            self.output_text.insert("end",f"{id}   {conc}\n")
     def _generate_ps(self):
         if not self.current_params:
             messagebox.showwarning("Внимание", "Сначала задайте параметры!")
