@@ -112,7 +112,7 @@ class ParamsDialog:
 
         # === Секция 2: Директивы ===
         dir_frame = ttk.LabelFrame(
-            scrollable_frame, text="⚙️ Директивы (NAMELIST RRP)", padding=10
+            scrollable_frame, text="⚙️ Директивы ", padding=10
         )
         dir_frame.pack(fill="x", padx=10, pady=5)
 
@@ -183,21 +183,17 @@ class ParamsDialog:
             count_frame, text="Применить", command=self._update_components_grid
         ).pack(side="left", padx=20)
 
+        ttk.Button(
+            count_frame, text="Построить серию", command=self._make_series_dialog
+        ).pack(side="left", padx=20)
+        
+
         # Сетка компонентов
         self.components_frame = ttk.Frame(recipe_frame)
         self.components_frame.pack(fill="x", pady=5)
         self.variants_frame = ttk.Frame(recipe_frame)
         self.variants_frame.pack(fill="x", pady=5)
 
-        self.conc_entries = []
-        self.id_entries = []
-        self.formula_entries = []
-        self.enthalpy_entries = []
-        self.search_buttons = []
-        self.oxy_id_entries = []
-        self.oxy_formula_entries = []
-        self.oxy_enthalpy_entries = []
-        self.oxy_search_buttons = []
 
         self._create_components_grid()
 
@@ -389,6 +385,320 @@ class ParamsDialog:
                 conc_entry.grid(row=comp_row, column=2, padx=3, pady=2)
                 conc_entry.insert(0, f"{100 / nb:.1f}")
                 self.conc_entries[-1].append(conc_entry)
+
+    def _make_series_dialog(self):
+        """Создаёт диалоговое окно для построения серии расчётов"""
+        self.series_dialog = tk.Toplevel(self.dialog)
+        self.series_dialog.title("Построение серии расчётов")
+        self.series_dialog.geometry("600x500")
+        self.series_dialog.transient(self.dialog)
+        self.series_dialog.grab_set()
+
+        self.start_conc_entries = {}  # Словарь: индекс компонента -> Entry
+        self.series_frame = ttk.LabelFrame(self.series_dialog, padding=10)
+        self.series_frame.pack(fill="both", expand=True)
+
+        ttk.Label(self.series_frame, text="Введите данные для построения серии",
+                  font=("TkDefaultFont", 10, "bold")).grid(row=0, column=0, columnspan=4, padx=3, pady=5)
+
+        # Получаем названия компонентов из основного окна
+        comp_names = []
+        for btn in self.search_buttons:
+            btn_text = btn.cget("text")
+            if btn_text and btn_text != "Выберите компонент...":
+                comp_names.append(btn_text)
+            else:
+                comp_names.append(f"Комп. {len(comp_names)+1}")
+
+        n = int(self.nb_entry.get())
+        comp_options = [f"{i+1}. {comp_names[i]}" for i in range(n)]
+
+        # Выбор двух компонентов для изменения через Combobox
+        ttk.Label(self.series_frame, text="Первый изменяемый компонент:").grid(row=1, column=0, padx=3, pady=3, sticky="e")
+        self.fst_comp_combo = ttk.Combobox(self.series_frame, values=comp_options, width=30, state="readonly")
+        self.fst_comp_combo.grid(row=1, column=1, columnspan=2, padx=3, pady=3, sticky="w")
+        self.fst_comp_combo.current(0)
+
+        ttk.Label(self.series_frame, text="Второй изменяемый компонент:").grid(row=2, column=0, padx=3, pady=3, sticky="e")
+        self.scnd_comp_combo = ttk.Combobox(self.series_frame, values=comp_options, width=30, state="readonly")
+        self.scnd_comp_combo.grid(row=2, column=1, columnspan=2, padx=3, pady=3, sticky="w")
+        self.scnd_comp_combo.current(1 if n > 1 else 0)
+
+        # Кнопка подтверждения выбора компонентов
+        self.confirm_btn = ttk.Button(self.series_frame, text="Подтвердить выбор компонентов", 
+                                       command=self._on_confirm_components)
+        self.confirm_btn.grid(row=3, column=0, columnspan=4, padx=3, pady=10)
+
+        # Флаг подтверждения выбора
+        self.components_confirmed = False
+
+        # Контейнер для полей концентраций (изначально скрыт)
+        self.conc_container = ttk.Frame(self.series_frame)
+        
+        # Шаг изменения концентрации
+        ttk.Label(self.conc_container, text="Шаг изменения концентрации (%):").grid(row=0, column=0, padx=3, pady=3, sticky="e")
+        self.step_entry = ttk.Entry(self.conc_container, width=10)
+        self.step_entry.grid(row=0, column=1, padx=3, pady=3, sticky="w")
+        self.step_entry.insert(0, "5")
+
+        # Начальная и конечная концентрация первого компонента
+        ttk.Label(self.conc_container, text="Начальная концентрация (%):").grid(row=1, column=0, padx=3, pady=3, sticky="e")
+        self.start_conc_1_entry = ttk.Entry(self.conc_container, width=10)
+        self.start_conc_1_entry.grid(row=1, column=1, padx=3, pady=3, sticky="w")
+        self.start_conc_1_entry.insert(0, "0")
+
+        ttk.Label(self.conc_container, text="Конечная концентрация (%):").grid(row=2, column=0, padx=3, pady=3, sticky="e")
+        self.end_conc_1_entry = ttk.Entry(self.conc_container, width=10)
+        self.end_conc_1_entry.grid(row=2, column=1, padx=3, pady=3, sticky="w")
+        self.end_conc_1_entry.insert(0, "100")
+
+        # Начальные концентрации для остальных компонентов
+        ttk.Separator(self.conc_container, orient="horizontal").grid(row=3, column=0, columnspan=4, sticky="ew", pady=10)
+        ttk.Label(self.conc_container, text="Начальные концентрации компонентов (%)",
+                  font=("TkDefaultFont", 9, "bold")).grid(row=4, column=0, columnspan=4, padx=3, pady=5)
+
+        # Кнопки будут созданы после подтверждения выбора в _create_conc_entries
+
+    def _on_confirm_components(self):
+        """Обработчик кнопки подтверждения выбора компонентов"""
+        comp_1 = self.fst_comp_combo.current()
+        comp_2 = self.scnd_comp_combo.current()
+
+        # Проверка: компоненты не должны совпадать
+        if comp_1 == comp_2:
+            messagebox.showerror("Ошибка", "Выбраны одинаковые компоненты")
+            return
+
+        # Получаем названия компонентов
+        comp_names = []
+        for btn in self.search_buttons:
+            btn_text = btn.cget("text")
+            if btn_text and btn_text != "Выберите компонент...":
+                comp_names.append(btn_text)
+            else:
+                comp_names.append(f"Комп. {len(comp_names)+1}")
+
+        n = int(self.nb_entry.get())
+
+        # Блокируем выбор компонентов
+        self.fst_comp_combo.config(state="disabled")
+        self.scnd_comp_combo.config(state="disabled")
+        self.confirm_btn.config(text="Выбор подтверждён", state="disabled")
+
+        # Создаём поля для ввода концентраций
+        self._create_conc_entries(n, comp_names, comp_1, comp_2)
+
+        self.components_confirmed = True
+
+    def _create_conc_entries(self, n, comp_names, comp_1, comp_2):
+        """Создаёт поля для ввода начальных концентраций"""
+        # Очищаем старые виджеты
+        for widget in self.conc_container.grid_slaves():
+            if int(widget.grid_info()['row']) >= 3:
+                widget.destroy()
+
+        self.start_conc_entries.clear()
+
+        # Создаём поля только для неизменяемых компонентов
+        row = 5
+        other_conc_default = 100.0 / (n - 1) if n > 1 else 0
+
+        for i in range(n):
+            if i == comp_1 or i == comp_2:
+                continue  # Пропускаем изменяемые компоненты
+
+            ttk.Label(self.conc_container, text=f"{i+1}. {comp_names[i]}:").grid(row=row, column=0, padx=3, pady=3, sticky="e")
+            start_conc_entry = ttk.Entry(self.conc_container, width=10)
+            start_conc_entry.grid(row=row, column=1, padx=3, pady=3, sticky="w")
+            # Предзаполняем средним значением
+            start_conc_entry.insert(0, f"{other_conc_default:.1f}")
+            self.start_conc_entries[i] = start_conc_entry
+            row += 1
+
+        # Добавляем информационные метки для изменяемых компонентов
+        info_row = row
+        ttk.Separator(self.conc_container, orient="horizontal").grid(row=info_row, column=0, columnspan=4, sticky="ew", pady=10)
+
+        ttk.Label(self.conc_container, text=f"✦ {comp_names[comp_1]} — изменяется от 0% до 100%",
+                  foreground="blue").grid(row=info_row+1, column=0, columnspan=4, padx=3, pady=3, sticky="w")
+        ttk.Label(self.conc_container,
+                  text=f"✦ {comp_names[comp_2]} — изменяется компенсаторно (сумма с 1-м = const)",
+                  foreground="blue").grid(row=info_row+2, column=0, columnspan=4, padx=3, pady=3, sticky="w")
+
+        # Сумма концентраций остальных компонентов
+        other_sum_label = ttk.Label(self.conc_container, text="Сумма остальных концентраций:",
+                                    font=("TkDefaultFont", 9, "bold"))
+        other_sum_label.grid(row=info_row+3, column=0, padx=3, pady=5, sticky="e")
+        self.other_sum_value = ttk.Label(self.conc_container, text="0.0%",
+                                          font=("TkDefaultFont", 9, "bold"), foreground="green")
+        self.other_sum_value.grid(row=info_row+3, column=1, padx=3, pady=5, sticky="w")
+
+        # Доступный диапазон для изменяемых компонентов
+        avail_label = ttk.Label(self.conc_container, text="Доступно для изменяемых:",
+                                font=("TkDefaultFont", 9, "bold"))
+        avail_label.grid(row=info_row+4, column=0, padx=3, pady=5, sticky="e")
+        self.avail_value = ttk.Label(self.conc_container, text="100.0%",
+                                      font=("TkDefaultFont", 9, "bold"), foreground="green")
+        self.avail_value.grid(row=info_row+4, column=1, padx=3, pady=5, sticky="w")
+
+        # Привязываем обновление суммы к полям ввода
+        for entry in self.start_conc_entries.values():
+            entry.bind("<KeyRelease>", self._update_other_sum)
+            entry.bind("<FocusOut>", self._update_other_sum)
+
+        # Создаём кнопки (после всех полей)
+        btn_row = info_row + 5
+        btn_frame = ttk.Frame(self.conc_container)
+        btn_frame.grid(row=btn_row, column=0, columnspan=4, pady=10)
+        ttk.Button(btn_frame, text="Построить серию", command=self._build_series).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Отмена", command=self.series_dialog.destroy).pack(side="left", padx=5)
+
+        # Показываем контейнер
+        self.conc_container.grid(row=4, column=0, columnspan=4, padx=3, pady=5, sticky="ns")
+
+        # Инициализируем сумму
+        self._update_other_sum()
+
+    def _update_other_sum(self, event=None):
+        """Обновляет отображение суммы концентраций остальных компонентов"""
+        try:
+            other_sum = sum(float(entry.get()) for entry in self.start_conc_entries.values())
+            self.other_sum_value.config(text=f"{other_sum:.1f}%")
+            
+            # Доступно для изменяемых компонентов
+            start_1 = float(self.start_conc_1_entry.get()) if hasattr(self, 'start_conc_1_entry') else 0
+            available = 100.0 - other_sum
+            self.avail_value.config(text=f"{available:.1f}%")
+            
+            # Подсветка если сумма слишком большая
+            if other_sum >= 100:
+                self.other_sum_value.config(foreground="red")
+                self.avail_value.config(foreground="red")
+            elif start_1 > available:
+                self.other_sum_value.config(foreground="green")
+                self.avail_value.config(foreground="red")
+            else:
+                self.other_sum_value.config(foreground="green")
+                self.avail_value.config(foreground="green")
+        except (ValueError, TypeError):
+            pass
+
+    def _build_series(self):
+        """Построение серии расчётов с изменением концентраций двух компонентов.
+
+        Концентрация 1-го компонента изменяется от start до end с заданным шагом.
+        Концентрация 2-го компонента изменяется компенсаторно (сумма 1+2 = const).
+        """
+        try:
+            # Проверка: подтверждён ли выбор компонентов
+            if not self.components_confirmed:
+                messagebox.showwarning("Предупреждение", 
+                    "Сначала подтвердите выбор компонентов")
+                return
+
+            # Получаем номера компонентов (индексация с 0)
+            comp_1 = self.fst_comp_combo.current()
+            comp_2 = self.scnd_comp_combo.current()
+            nb = int(self.nb_entry.get())
+
+            # Параметры изменения концентраций
+            step = float(self.step_entry.get())
+            if step <= 0:
+                messagebox.showerror("Ошибка", "Шаг должен быть положительным числом")
+                return
+
+            start_1 = float(self.start_conc_1_entry.get())
+            end_1 = float(self.end_conc_1_entry.get())
+
+            # Проверка диапазона концентраций
+            if start_1 < 0 or end_1 < 0 or start_1 > 100 or end_1 > 100:
+                messagebox.showerror("Ошибка", "Концентрация должна быть от 0 до 100%")
+                return
+
+            # Собираем концентрации остальных (неизменяемых) компонентов
+            other_conc = {}
+            other_sum = 0.0
+            for i, entry in self.start_conc_entries.items():
+                conc = float(entry.get())
+                other_conc[i] = conc
+                other_sum += conc
+
+            # Проверка: сумма остальных концентраций
+            if other_sum >= 100:
+                messagebox.showerror("Ошибка",
+                    f"Сумма концентраций остальных компонентов ({other_sum:.1f}%) "
+                    f"должна быть меньше 100%")
+                return
+
+            # Начальная концентрация 2-го компонента
+            start_2 = 100.0 - start_1 - other_sum
+            
+            if start_2 < 0:
+                messagebox.showerror("Ошибка",
+                    f"Отрицательная начальная концентрация 2-го компонента ({start_2:.1f}%)\n"
+                    f"Уменьшите сумму остальных концентраций или начальную концентрацию 1-го")
+                return
+
+            # Конечная концентрация 2-го компонента
+            end_2 = 100.0 - end_1 - other_sum
+            if end_2 < 0:
+                messagebox.showerror("Ошибка",
+                    f"Отрицательная конечная концентрация 2-го компонента ({end_2:.1f}%)\n"
+                    f"Уменьшите конечную концентрацию 1-го компонента")
+                return
+
+            # Сумма концентраций двух изменяемых компонентов (константа)
+            sum_1_2 = start_1 + start_2
+
+            # Определяем направление изменения
+            direction = 1 if start_1 <= end_1 else -1
+
+            # Рассчитываем количество вариаций
+            steps = int(abs(end_1 - start_1) / step) + 1
+
+            # Устанавливаем количество вариаций
+            self.var_entry.delete(0, "end")
+            self.var_entry.insert(0, str(steps))
+
+            # Обновляем сетку компонентов
+            self._update_components_grid()
+
+            # Заполняем концентрации для каждой вариации
+            for var_idx, entry_list in enumerate(self.conc_entries):
+                if not entry_list:
+                    continue
+
+                curr_1 = start_1 + var_idx * step * direction
+                curr_2 = sum_1_2 - curr_1  # Компенсаторное изменение
+
+                for comp_idx, entry in enumerate(entry_list):
+                    entry.delete(0, "end")
+                    if comp_idx == comp_1:
+                        entry.insert(0, f"{curr_1:.2f}")
+                    elif comp_idx == comp_2:
+                        entry.insert(0, f"{curr_2:.2f}")
+                    else:
+                        # Остальные компоненты остаются неизменными
+                        entry.insert(0, f"{other_conc.get(comp_idx, 0):.2f}")
+
+            self.series_dialog.destroy()
+
+        except ValueError as e:
+            messagebox.showerror("Ошибка", f"Некорректный ввод данных: {e}")
+        
+        
+######### Нужно реализовать непосредвенно построение серии в GUI ##################### 
+
+
+
+
+
+
+
+
+
+        
+
 
     def _update_components_grid(self):
         """Обновляет сетку компонентов, сохраняя введенные данные"""

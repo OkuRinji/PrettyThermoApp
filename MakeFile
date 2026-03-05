@@ -1,0 +1,17 @@
+HELL:= /bin/bash
+
+.PHONY: app build up lint 
+
+app:
+	uv run main.py
+
+build:
+	docker-compose build
+
+up:    build
+	docker-compose up 
+
+lint:
+	 ruff check --select I --fix
+	 ruff format .
+	 ruff check . 
