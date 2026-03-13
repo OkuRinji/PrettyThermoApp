@@ -1,117 +1,176 @@
-# core/ps_generator.py
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Генератор PS файлов для программы TERMO94.
+
+Создаёт входные файлы в формате, требуемом программой TERMO94,
+на основе параметров расчета.
+"""
+
+import logging
 import os
+from pathlib import Path
+from typing import Dict, List, Any, Union
+
+logger = logging.getLogger(__name__)
+
+# Константы
+DEFAULT_AUTHOR = "Каф. ТИПиКМ"
+DEFAULT_CODE = "*"
+LINE_ENCODING = "cp866"
+LINE_ENDING = "\r\n"
 
 
 class PSGenerator:
-    def __init__(self, work_dir):
-        self.work_dir = work_dir
+    """
+    Генератор PS файлов для TERMO94.
 
-    def generate(self, params, filename="input.ps"):
+    Создаёт файлы в формате, совместимом с программой TERMO94,
+    включая метаданные, директивы, параметры процесса и рецептуру.
+
+    Example:
+        >>> generator = PSGenerator("TERMO/")
+        >>> filepath = generator.generate(params, "calc.ps")
+    """
+
+    def __init__(self, work_dir: str):
         """
-        Генерирует файл .PS для TERMO94 по реальным примерам
+        Инициализация генератора.
+
+        Args:
+            work_dir: Рабочая директория для сохранения PS файлов.
         """
-        filepath = os.path.join(self.work_dir, filename)
+        self.work_dir = Path(work_dir)
+        logger.debug(f"PSGenerator инициализирован: work_dir={work_dir}")
 
-        with open(filepath, "w", encoding="cp866", newline="\r\n") as f:
-            # 1. Метаданные (строка ~60 символов)
-            author = params.get("author", "Калмыков")
-            code = params.get("code", "*")
-            meta = f"Исполнитель : * {author:<10} *   Шифр {code:<10}   *\n"
-            f.write(meta)
-
-            # 2. Блок директив NAMELIST RRP
-            f.write(self._build_rrp_block(params.get("directives", {})))
-
-            # 3. Параметры процесса (PK, PC, AL, TP и т.д.)
-            for param in ["PK", "PC", "AL", "VK", "PH", "OP", "OF", "TP"]:
-                if param in params and params[param] is not None:
-                    f.write(f"{param}={params[param]}\n")
-
-            # 4. Рецептура (N вариантов, NB компонентов)
-            f.write(f"N={params['N']}  NB={params['NB']}\n")
-
-            # 5. Варианты и концентрации
-            for variant in params["variants"]:
-                concentrations = ",".join(
-                    [self._format_conc(x) for x in variant["concentrations"]]
-                )
-                f.write(f"{variant['id']},{concentrations}\n")
-
-            # 6. Компоненты (9 символов энтальпия + формула)
-            for comp in params["components"]:
-                # Энтальпия: 9 символов, выровнено по правому краю
-                enthalpy_str = f"{comp['enthalpy']:>9.2f}"
-                formula_str = comp["formula"]
-                f.write(f"{enthalpy_str}{formula_str}\n")
-            # 7. Участие внешенго окислителя
-            if params["AL"] and params["AL"] != 0:
-                f.write(f"N={params['AL_N']}  NB={params['AL_NB']}\n")
-                for variant in params["AL_variants"]:
-                    concentrations = ",".join(
-                        [self._format_conc(x) for x in variant["concentrations"]]
-                    )
-                    f.write(f"{variant['id']},{concentrations}\n")
-                for comp in params["outer_oxy"]:
-                    # Энтальпия: 9 символов, выровнено по правому краю
-                    enthalpy_str = f"{comp['enthalpy']:>9.2f}"
-                    formula_str = comp["formula"]
-                    f.write(f"{enthalpy_str}{formula_str}\n")
-
-        # 'outer_oxy':{
-        #             'id': 603,
-        #             'formula': "N 54.8972O 14.4375"                                                    ,
-        #             'enthalpy': 0.00}
-        return filepath
-
-    def _build_rrp_block(self, directives):
+    def generate(
+        self,
+        params: Dict[str, Any],
+        filename: str = "input.ps",
+    ) -> str:
         """
-        Формирует строку &RRP ... /&END
-        Директивы могут быть разбиты на несколько строк
+        Генерация PS файла для TERMO94.
+
+        Args:
+            params: Словарь параметров расчета.
+            filename: Имя выходного файла.
+
+        Returns:
+            Полный путь к созданному файлу.
+
+        Raises:
+            IOError: При ошибке записи файла.
+            KeyError: При отсутствии обязательных параметров.
+        """
+        filepath = self.work_dir / filename
+
+        try:
+            with open(filepath, "w", encoding=LINE_ENCODING, newline=LINE_ENDING) as f:
+                # 1. Метаданные
+                self._write_metadata(f, params)
+
+                # 2. Блок директив NAMELIST RRP
+                self._write_directives(f, params.get("directives", {}))
+
+                # 3. Параметры процесса
+                self._write_process_params(f, params)
+
+                # 4. Рецептура (основные компоненты)
+                self._write_recipe(f, params)
+
+                # 5. Внешний окислитель (если есть)
+                if params.get("AL") and params["AL"] != 0:
+                    self._write_outer_oxy(f, params)
+
+            logger.info(f"PS файл создан: {filepath}")
+            return str(filepath)
+
+        except IOError as e:
+            logger.error(f"Ошибка записи PS файла {filepath}: {e}")
+            raise
+        except KeyError as e:
+            logger.error(f"Отсутствует обязательный параметр: {e}")
+            raise
+
+    def _write_metadata(self, f, params: Dict[str, Any]) -> None:
+        """Запись метаданных (исполнитель, шифр)."""
+        author = params.get("author", DEFAULT_AUTHOR)
+        code = params.get("code", DEFAULT_CODE)
+        meta = f"Исполнитель : * {author:<10} *   Шифр {code:<10}   *\n"
+        f.write(meta)
+
+    def _write_directives(self, f, directives: Dict[str, Any]) -> None:
+        """
+        Запись блока директив NAMELIST RRP.
+
+        Args:
+            f: Файловый объект.
+            directives: Словарь директив.
         """
         parts = []
-        line = " &RRP "
-
         for key, value in directives.items():
             if isinstance(value, bool):
                 parts.append(f"{key}={'T' if value else 'F'}")
             else:
                 parts.append(f"{key}={value}")
 
-        # Формируем строку с директивами (можно разбить на несколько строк)
-        directive_line = line + ",".join(parts) + " /&END\n"
-        return directive_line
+        directive_line = " &RRP " + ",".join(parts) + " /&END\n"
+        f.write(directive_line)
 
-    def _format_conc(self, value):
+    def _write_process_params(self, f, params: Dict[str, Any]) -> None:
+        """Запись параметров процесса (PK, PC, AL и др.)."""
+        process_params = ["PK", "PC", "AL", "VK", "PH", "OP", "OF", "TP"]
+        for param in process_params:
+            if param in params and params[param] is not None:
+                f.write(f"{param}={params[param]}\n")
+
+    def _write_recipe(self, f, params: Dict[str, Any]) -> None:
+        """Запись рецептуры состава."""
+        # N=... NB=...
+        f.write(f"N={params['N']}  NB={params['NB']}\n")
+
+        # Варианты и концентрации
+        for variant in params["variants"]:
+            concentrations = ",".join(
+                [self._format_conc(x) for x in variant["concentrations"]]
+            )
+            f.write(f"{variant['id']},{concentrations}\n")
+
+        # Компоненты
+        for comp in params["components"]:
+            enthalpy_str = f"{comp['enthalpy']:>9.2f}"
+            formula_str = comp["formula"]
+            f.write(f"{enthalpy_str}{formula_str}\n")
+
+    def _write_outer_oxy(self, f, params: Dict[str, Any]) -> None:
+        """Запись параметров внешнего окислителя."""
+        f.write(f"N={params['AL_N']}  NB={params['AL_NB']}\n")
+
+        for variant in params["AL_variants"]:
+            concentrations = ",".join(
+                [self._format_conc(x) for x in variant["concentrations"]]
+            )
+            f.write(f"{variant['id']},{concentrations}\n")
+
+        for comp in params["outer_oxy"]:
+            enthalpy_str = f"{comp['enthalpy']:>9.2f}"
+            formula_str = comp["formula"]
+            f.write(f"{enthalpy_str}{formula_str}\n")
+
+    @staticmethod
+    def _format_conc(value: Union[int, float]) -> str:
         """
-        Форматирует концентрацию как в примерах (50., 66.7, 10.4)
+        Форматирование концентрации (50., 66.7, 10.4).
+
+        Args:
+            value: Значение концентрации.
+
+        Returns:
+            Отформатированная строка концентрации.
         """
         if value == int(value):
             return f"{int(value)}."
         else:
             # Убираем лишние нули после запятой
-            return (
-                f"{value:.1f}".rstrip("0").rstrip(".") + "."
-                if "." in f"{value:.1f}"
-                else f"{value:.1f}"
-            )
-
-
-params1 = {
-    "author": "Калмыков",
-    "directives": {"LNN": True, "TABL": True},
-    "PK": 0.1,
-    "AL": 0.2,
-    "N": 1,
-    "NB": 2,
-    "AL_N": 1,
-    "AL_NB": 1,
-    "variants": [{"id": 1, "concentrations": [50.0, 50.0]}],
-    "AL_variants": [{"id": 1, "concentrations": [100.0]}],
-    "components": [
-        {"enthalpy": -2463.27, "formula": "N H 4.CLO 4."},
-        {"enthalpy": 0.00, "formula": "AL18.53MG20.57"},
-    ],
-    "outer_oxy": [{"id": 603, "formula": "N 54.8972O 14.4375", "enthalpy": 0.00}],
-}
-# a=PSGenerator(r"c:\THERMO")
-# a.generate(params1,"Rnd.ps")
+            formatted = f"{value:.1f}".rstrip("0").rstrip(".")
+            return formatted + "." if "." in formatted else formatted + "."

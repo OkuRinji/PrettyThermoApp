@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Парсер файлов .res (выходные файлы термохимической программы TERMPS)
-Извлекает ВСЕ расчёты с полным равновесным составом
+Парсер файлов .res (выходные файлы термохимической программы TERMPS).
+
+Извлекает все расчёты с полным равновесным составом.
 """
 
-import re
-import os
 import json
+import logging
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import List, Dict
+
+logger = logging.getLogger(__name__)
+
+# Константы для парсинга
+CALCULATION_CONTEXT_LINES_BEFORE = 15
+CALCULATION_CONTEXT_LINES_AFTER = 60
+MAX_GAS_COMPONENTS_DISPLAY = 30
+MAX_GAS_COMPONENTS_DETAILED = 15
 
 
 @dataclass
@@ -137,15 +148,16 @@ class ResParser:
         for idx, marker_idx in enumerate(calc_markers):
             # Берём строки от предыдущего маркера до следующего
             prev_idx = (
-                calc_markers[idx - 1] + 20 if idx > 0 else max(0, marker_idx - 15)
+                calc_markers[idx - 1] + 20 if idx > 0
+                else max(0, marker_idx - CALCULATION_CONTEXT_LINES_BEFORE)
             )
             next_idx = (
                 calc_markers[idx + 1] if idx + 1 < len(calc_markers) else len(lines)
             )
 
-            start_idx = max(prev_idx, marker_idx - 15)
+            start_idx = max(prev_idx, marker_idx - CALCULATION_CONTEXT_LINES_BEFORE)
             # Увеличиваем end_idx чтобы захватить секцию "Равновесный состав"
-            end_idx = min(next_idx, marker_idx + 60)
+            end_idx = min(next_idx, marker_idx + CALCULATION_CONTEXT_LINES_AFTER)
 
             section_lines = lines[start_idx:end_idx]
             all_lines = lines
@@ -388,9 +400,18 @@ def parse_res_file(filepath: str) -> ResData:
     return parser.parse()
 
 
-def parse_directory(directory: str, pattern: str = "*.res") -> list[ResData]:
-    """Парсинг всех .res файлов в директории"""
-    results = []
+def parse_directory(directory: str, pattern: str = "*.res") -> List[ResData]:
+    """
+    Парсинг всех .res файлов в директории.
+
+    Args:
+        directory: Путь к директории с .res файлами.
+        pattern: Glob-паттерн для поиска файлов.
+
+    Returns:
+        Список распарсенных данных из всех файлов.
+    """
+    results: List[ResData] = []
     dir_path = Path(directory)
 
     for filepath in dir_path.glob(pattern):
@@ -398,13 +419,20 @@ def parse_directory(directory: str, pattern: str = "*.res") -> list[ResData]:
             data = parse_res_file(str(filepath))
             results.append(data)
         except Exception as e:
-            print(f"Ошибка при парсинге {filepath}: {e}")
+            logger.error(f"Ошибка при парсинге {filepath}: {e}")
 
     return results
 
 
-def print_structured_data(data: ResData):
-    """Вывод структурированных данных"""
+def print_structured_data(data: ResData) -> None:
+    """
+    Вывод структурированных данных в консоль.
+
+    Предназначена для CLI использования и отладки.
+
+    Args:
+        data: Распарсенные данные из .res файла.
+    """
     print("=" * 70)
     print(f"File: {data.filename}")
     print("=" * 70)
@@ -435,7 +463,6 @@ def print_structured_data(data: ResData):
             if calc.composition_percent:
                 print(f"  Composition (%): {calc.composition_percent}")
 
-            # Термодинамические параметры
             print("  Thermodynamic parameters:")
             if calc.pressure:
                 print(f"    Pressure (P):        {calc.pressure:.6e}")
@@ -458,18 +485,18 @@ def print_structured_data(data: ResData):
             if calc.condensed_fraction:
                 print(f"    Condensed frac (Z кф): {calc.condensed_fraction:.4f}")
 
-            # Равновесный состав газовой фазы
             if calc.equilibrium_gas:
                 print(f"  Equilibrium gas ({len(calc.equilibrium_gas)} components):")
                 sorted_gas = sorted(calc.equilibrium_gas.items(), key=lambda x: -x[1])[
-                    :15
+                    :MAX_GAS_COMPONENTS_DETAILED
                 ]
                 for comp, value in sorted_gas:
                     print(f"    {comp}: {value:.6e}")
-                if len(calc.equilibrium_gas) > 15:
-                    print(f"    ... and {len(calc.equilibrium_gas) - 15} more")
+                if len(calc.equilibrium_gas) > MAX_GAS_COMPONENTS_DETAILED:
+                    print(
+                        f"    ... and {len(calc.equilibrium_gas) - MAX_GAS_COMPONENTS_DETAILED} more"
+                    )
 
-            # Конденсированные продукты
             if calc.equilibrium_condensed:
                 print("  Condensed products:")
                 for comp, value in sorted(
@@ -483,8 +510,16 @@ def print_structured_data(data: ResData):
     print()
 
 
-def export_to_json(data: ResData) -> dict:
-    """Экспорт в JSON"""
+def export_to_json(data: ResData) -> Dict:
+    """
+    Экспорт распарсенных данных в JSON-совместимый словарь.
+
+    Args:
+        data: Распарсенные данные из .res файла.
+
+    Returns:
+        Словарь с данными для JSON сериализации.
+    """
     return {
         "filename": data.filename,
         "mixture_name": data.mixture_name,

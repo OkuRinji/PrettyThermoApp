@@ -73,28 +73,35 @@ class ParamsDialog:
         self.nb_changed = False
 
         # Главный контейнер с прокруткой
-        main_canvas = tk.Canvas(self.dialog)
+        self.main_canvas = tk.Canvas(self.dialog)
         scrollbar = ttk.Scrollbar(
-            self.dialog, orient="vertical", command=main_canvas.yview
+            self.dialog, orient="vertical", command=self.main_canvas.yview
         )
-        scrollable_frame = ttk.Frame(main_canvas)
+        scrollable_frame = ttk.Frame(self.main_canvas)
 
         scrollable_frame.bind(
             "<Configure>",
-            lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all")),
+            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")),
         )
 
-        main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        main_canvas.configure(yscrollcommand=scrollbar.set)
+        self.main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        self.main_canvas.configure(yscrollcommand=scrollbar.set)
 
-        main_canvas.pack(side="left", fill="both", expand=True)
+        self.main_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
         # Прокрутка колесиком
         def _on_mousewheel(event):
-            main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            self.main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-        main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        self.main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        # Отписка обработчика прокрутки при закрытии окна
+        def _on_closing():
+            self.main_canvas.unbind_all("<MouseWheel>")
+            self.dialog.destroy()
+        
+        self.dialog.protocol("WM_DELETE_WINDOW", _on_closing)
 
         # === Секция 1: Метаданные ===
         meta_frame = ttk.LabelFrame(scrollable_frame, text="📋 Метаданные", padding=10)
@@ -210,7 +217,7 @@ class ParamsDialog:
             side="left", padx=5
         )
         ttk.Button(
-            btn_frame, text="❌ Отмена", command=self.dialog.destroy, width=15
+            btn_frame, text="❌ Отмена", command=_on_closing, width=15
         ).pack(side="left", padx=5)
         ttk.Button(
             btn_frame, text="💾 Сохранить шаблон", command=self._save_template, width=18
@@ -1212,6 +1219,8 @@ class ParamsDialog:
             params["components"] = components
 
             self.result = params
+            # Отписка обработчика прокрутки перед закрытием
+            self.main_canvas.unbind_all("<MouseWheel>")
             self.dialog.destroy()
 
         except ValueError as e:

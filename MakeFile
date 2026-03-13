@@ -1,17 +1,15 @@
-HELL:= /bin/bash
-
-.PHONY: app build up lint 
+.PHONY: app build up lint
 
 app:
-	uv run main.py
+	python -m uv run main.py
 
 build:
 	docker-compose build
 
 up:    build
-	docker-compose up 
+	docker-compose up
 
 lint:
-	 ruff check --select I --fix
-	 ruff format .
-	 ruff check . 
+	python -m uv run ruff check --select I --fix
+	python -m uv run ruff format .
+	python -m uv run ruff check .
