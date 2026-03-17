@@ -5,7 +5,10 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.res_component import ResComponent
 
 
 def _default_composition() -> list[float]:
@@ -214,12 +217,61 @@ class Result:
             "calculation_date": self.calculation_date,
             "calculation_time": self.calculation_time,
         }
+
+
 @dataclass
 class ResultSeries:
     """
-    Списко результатов относящихся к одной серии расчетов
+    Серия результатов термодинамического расчёта.
+
+    Хранит все результаты, относящиеся к одной серии расчетов (например,
+    оптимизация состава или параметрическое исследование).
 
     Attributes:
-        id: Идентификатор расчёта.
-        res_list: Список  экземпляров Result относящихся к этой серии
-     """
+        results: Список экземпляров Result, относящихся к этой серии.
+        mixture_name: Название смеси (если есть).
+        mixture_density: Плотность смеси (если есть).
+        element_composition: Элементный состав смеси.
+        components: Список компонентов смеси.
+        params: Параметры, использованные для расчетов.
+    """
+
+    results: list[Result] = field(default_factory=list)
+    mixture_name: str = ""
+    mixture_density: float = 0.0
+    element_composition: dict = field(default_factory=dict)
+    components: list["ResComponent"] = field(default_factory=list)
+    params: Any | None = None
+
+    def add_result(self, result: Result) -> None:
+        """
+        Добавить результат в серию.
+
+        Args:
+            result: Результат расчета для добавления.
+        """
+        self.results.append(result)
+
+    def get_result_by_id(self, result_id: int) -> Result | None:
+        """
+        Получить результат по ID.
+
+        Args:
+            result_id: ID результата.
+
+        Returns:
+            Результат или None, если не найден.
+        """
+        for result in self.results:
+            if result.id == result_id:
+                return result
+        return None
+
+    def __len__(self) -> int:
+        """Количество результатов в серии."""
+        return len(self.results)
+
+    def __iter__(self):
+        """Итератор по результатам."""
+        return iter(self.results)
+    

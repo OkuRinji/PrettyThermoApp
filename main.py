@@ -18,8 +18,10 @@ from core.catalog_manager import CatalogManager
 from core.ps_generator import PSGenerator
 from core.res_parser import ResParser
 from core.runner import OTVDMMRunner
+from core.calc_organizer import Calculator
 from gui.params_dialog import ParamsDialog
 from models.res_component import ResData
+from models.params import Params
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,7 @@ class ThermoApp:
         self.catalog = CatalogManager()
         self.generator = PSGenerator(str(self.work_dir))
         self.runner = OTVDMMRunner(str(self.otvdm_path), str(self.work_dir))
+        self.calculator: Calculator | None = None
 
         self.current_params = None
 
@@ -201,44 +204,80 @@ class ThermoApp:
             return False
 
     def _run_calculation(self) -> None:
-        """Запуск расчета."""
-        # Сначала генерируем PS файл и ждём завершения
-        if not self._generate_ps():
+        """Запуск расчета через Calculator."""
+        if not self.current_params:
+            messagebox.showwarning("Внимание", "Сначала задайте параметры!")
             return
 
-        fn = self.fn_entry.get()
-        input_ps = self.work_dir / f"{fn}.ps"
-
-        if not input_ps.exists():
-            messagebox.showwarning("Внимание", "Сначала создайте .PS файл!")
+        # Преобразуем текущие параметры в объект Params
+        try:
+            params = Params(
+                author=self.current_params.get("author", "Белобородов"),
+                code=self.current_params.get("code", "*"),
+                directives=self.current_params.get("directives", {}),
+                PK=self.current_params.get("PK", 0.1),
+                PC=self.current_params.get("PC", 0.1),
+                AL=self.current_params.get("AL", 0),
+                N=self.current_params.get("N", 2),
+                NB=self.current_params.get("NB", len(self.current_params.get("variants", []))),
+                AL_N=self.current_params.get("AL_N", 0),
+                AL_NB=self.current_params.get("AL_NB", 0),
+                variants=self.current_params.get("variants", []),
+                components=self.current_params.get("components", []),
+                al_variants=self.current_params.get("al_variants", []),
+            )
+        except ValueError as e:
+            logger.error(f"Ошибка валидации параметров: {e}")
+            messagebox.showerror("Ошибка", f"Некорректные параметры:\n{e}")
             return
+
+        # Создаем калькулятор
+        self.calculator = Calculator(
+            runner=self.runner,
+            generator=self.generator,
+            params=params,
+            logger=logger,
+            root=self.root,
+            base_path=self.base_path,
+        )
 
         # Блокируем кнопку запуска на время расчета
         self.status_var.set("⏳ Расчет выполняется...")
-        logger.info(f"Запуск расчета: {fn}.ps")
+        logger.info(f"Запуск серии расчетов: {len(params.variants)} вариаций")
 
-        def on_calc_complete(success: bool) -> None:
-            self.root.after(0, lambda: self._on_calc_complete(success, fn))
+        def on_progress(current: int, total: int) -> None:
+            self.root.after(
+                0,
+                lambda: self.status_var.set(f"⏳ Расчет: {current}/{total}"),
+            )
 
-        self.runner.run(
-            ps_file=fn, async_mode=True, hidden=False, on_complete=on_calc_complete
+        def on_complete(series) -> None:
+            self.root.after(0, lambda: self._on_calc_complete(series))
+
+        # Запускаем асинхронно
+        self.calculator.run_all_async(
+            on_progress=on_progress,
+            on_complete=on_complete,
         )
 
-    def _on_calc_complete(self, success: bool, fn: str) -> None:
+    def _on_calc_complete(self, series) -> None:
         """
-        Обработчик завершения расчета.
+        Обработчик завершения серии расчетов.
 
         Args:
-            success: True если расчет успешен.
-            fn: Имя файла расчета.
+            series: ResultSeries с результатами.
         """
-        if success:
-            self.output_text.insert("end", "\n✓ Расчет завершен\n")
-            self.status_var.set("✓ Расчет завершен")
-            logger.info(f"Расчет завершен: {fn}")
+        if series and len(series) > 0:
+            self.output_text.insert("end", f"\n✓ Серия расчетов завершена\n")
+            self.output_text.insert("end", f"✓ Получено результатов: {len(series)}\n")
+            self.status_var.set(f"✓ Расчет завершен: {len(series)} результатов")
+            logger.info(f"Серия расчетов завершена: {len(series)} результатов")
+
+            # Сохраняем последнюю серию для последующего отображения
+            self.last_series = series
         else:
-            logger.error(f"Ошибка расчета: {fn}")
-            messagebox.showerror("Ошибка", "Не удалось запустить расчет")
+            logger.error("Ошибка расчета: нет результатов")
+            messagebox.showerror("Ошибка", "Не удалось получить результаты расчета")
             self.status_var.set("✗ Ошибка расчета")
 
     def _load_results(self, fn: str) -> ResData | None:
@@ -278,6 +317,12 @@ class ThermoApp:
 
     def _show_results(self) -> None:
         """Показ результатов расчета."""
+        # Сначала пробуем показать результаты из последней серии
+        if hasattr(self, "last_series") and self.last_series and len(self.last_series) > 0:
+            self._show_series_results(self.last_series)
+            return
+
+        # Если нет серии, пробуем загрузить из файла
         fn = self.fn_entry.get()
         data = self._load_results(fn)
 
@@ -296,6 +341,130 @@ class ThermoApp:
         except Exception as e:
             logger.error(f"Ошибка форматирования результатов: {e}")
             self._show_raw_results(fn)
+
+    def _show_series_results(self, series) -> None:
+        """
+        Показ результатов серии расчетов.
+
+        Args:
+            series: ResultSeries с результатами.
+        """
+        try:
+            output = StringIO()
+            self._format_series_results(series, output)
+            result_text = output.getvalue()
+
+            self.output_text.delete("1.0", "end")
+            self.output_text.insert("1.0", result_text)
+            self.status_var.set(f"✓ Показано {len(series)} результатов")
+
+        except Exception as e:
+            logger.error(f"Ошибка форматирования серии: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось показать результаты:\n{e}")
+
+    def _format_series_results(self, series, output: StringIO) -> None:
+        """
+        Форматирование результатов серии.
+
+        Args:
+            series: ResultSeries с результатами.
+            output: StringIO объект для записи.
+        """
+        output.write("=" * 60 + "\n")
+        output.write("СЕРИЯ РАСЧЕТОВ\n")
+        output.write("=" * 60 + "\n\n")
+
+        if series.mixture_name:
+            output.write(f"Смесь: {series.mixture_name}\n")
+        if series.mixture_density:
+            output.write(f"Плотность смеси: {series.mixture_density}\n")
+        output.write(f"Количество результатов: {len(series)}\n\n")
+
+        if series.components:
+            output.write("Компоненты:\n")
+            output.write("-" * 40 + "\n")
+            for comp in series.components:
+                output.write(f"  {comp.name}: HF298 = {comp.hf298}\n")
+            output.write("\n")
+
+        if series.element_composition:
+            output.write("Элементный состав:\n")
+            output.write("-" * 40 + "\n")
+            for elem, value in series.element_composition.items():
+                output.write(f"  [{elem}]: {value:.6e}\n")
+            output.write("\n")
+
+        output.write("=" * 60 + "\n")
+        output.write(f"РЕЗУЛЬТАТЫ ({len(series)} расчётов)\n")
+        output.write("=" * 60 + "\n\n")
+
+        for result in series:
+            self._format_single_result(result, output)
+
+    def _format_single_result(self, result, output: StringIO) -> None:
+        """
+        Форматирование одного результата из серии.
+
+        Args:
+            result: Result из серии.
+            output: StringIO объект для записи.
+        """
+        output.write("=" * 60 + "\n")
+        output.write(f"Расчёт #{result.id}\n")
+        output.write("=" * 60 + "\n")
+
+        if result.composition_percent:
+            output.write(f"Концентрации: {result.composition_percent}\n")
+
+        output.write("\nТермодинамические параметры:\n")
+        output.write("-" * 40 + "\n")
+
+        param_labels = {
+            "pressure": ("Давление (P)", "МПа"),
+            "temperature": ("Температура (T)", "K"),
+            "enthalpy": ("Энтальпия (I)", "кДж/кг"),
+            "entropy": ("Энтропия (S)", ""),
+            "heat_capacity": ("Теплоемкость (C)", ""),
+            "density": ("Плотность (R)", ""),
+            "molar_mass": ("Молярная масса (M)", "г/моль"),
+            "adiabatic_index": ("Показатель адиабаты (K)", ""),
+            "volume_gas": ("Объём газовой фазы", "м³/кг"),
+            "condensed_fraction": ("Доля конденсата (Z)", ""),
+        }
+
+        for attr, (label, unit) in param_labels.items():
+            value = getattr(result, attr, None)
+            if value:
+                if unit:
+                    output.write(f"  {label:<25} {value:>12.6e} {unit}\n")
+                else:
+                    output.write(f"  {label:<25} {value:>12.4f}\n")
+
+        if result.equilibrium_gas:
+            output.write("\nРавновесный состав газовой фазы:\n")
+            output.write("-" * 40 + "\n")
+            sorted_gas = sorted(result.equilibrium_gas.items(), key=lambda x: -x[1])[:30]
+            for comp, value in sorted_gas:
+                output.write(f"  {comp}: {value:.6e}\n")
+            if len(result.equilibrium_gas) > 30:
+                output.write(
+                    f"  ... и ещё {len(result.equilibrium_gas) - 30} компонентов\n"
+                )
+
+        if result.equilibrium_condensed:
+            output.write("\nКонденсированные продукты:\n")
+            output.write("-" * 40 + "\n")
+            for comp, value in sorted(
+                result.equilibrium_condensed.items(), key=lambda x: -x[1]
+            ):
+                output.write(f"  {comp}*: {value:.6e}\n")
+
+        if result.calculation_date:
+            output.write(
+                f"\nДата расчета: {result.calculation_date} {result.calculation_time}\n"
+            )
+
+        output.write("\n")
 
     def _format_results(self, data: ResData, output: StringIO) -> None:
         """
@@ -401,6 +570,12 @@ class ThermoApp:
 
     def _show_plots(self) -> None:
         """Показ графиков результатов."""
+        # Сначала пробуем показать графики из последней серии
+        if hasattr(self, "last_series") and self.last_series and len(self.last_series) > 0:
+            self._show_series_plots(self.last_series)
+            return
+
+        # Если нет серии, пробуем загрузить из файла
         fn = self.fn_entry.get()
         data = self._load_results(fn)
 
@@ -436,6 +611,56 @@ class ThermoApp:
 
         except Exception as e:
             logger.error(f"Ошибка построения графиков: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось построить графики:\n{e}")
+
+    def _show_series_plots(self, series) -> None:
+        """
+        Показ графиков для серии результатов.
+
+        Args:
+            series: ResultSeries с результатами.
+        """
+        try:
+            if not series.results:
+                messagebox.showinfo(
+                    "Информация",
+                    "В серии нет результатов для построения графика",
+                )
+                return
+
+            # Создаем ResData из серии для совместимости с plotter
+            from models.res_component import ResData
+
+            res_data = ResData(
+                filename="series_results",
+                mixture_name=series.mixture_name,
+                mixture_density=series.mixture_density,
+                components=series.components,
+                element_composition=series.element_composition,
+                calculations=series.results,
+            )
+
+            variants = []
+            if self.current_params and "variants" in self.current_params:
+                variants = self.current_params["variants"].copy()
+                if "components" in self.current_params:
+                    component_names = [
+                        comp.get("name", f"Компонент {i + 1}")
+                        for i, comp in enumerate(self.current_params["components"])
+                    ]
+                    for variant in variants:
+                        variant["component_names"] = component_names
+
+            from gui.plotter import ResultsPlotter
+
+            plotter = ResultsPlotter(self.root, [res_data], variants)
+            plotter.show_plot_dialog()
+
+            self.status_var.set("✓ Графики построены")
+            logger.info("Графики построены для серии")
+
+        except Exception as e:
+            logger.error(f"Ошибка построения графиков для серии: {e}")
             messagebox.showerror("Ошибка", f"Не удалось построить графики:\n{e}")
 
     def _run_optimization(self) -> None:
