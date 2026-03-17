@@ -3,11 +3,11 @@
 app:
 	python -m uv run main.py
 
-build:
-	docker-compose build
+# build:
+# 	docker-compose build
 
-up:    build
-	docker-compose up
+# up:    build
+# 	docker-compose up
 
 lint:
 	python -m uv run ruff check --select I --fix

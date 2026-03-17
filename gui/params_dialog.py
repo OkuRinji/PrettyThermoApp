@@ -1,9 +1,11 @@
 # gui/params_dialog.py
 import tkinter as tk
-from tkinter import ttk, messagebox
-from typing import Dict, Optional, List, Any
+from tkinter import messagebox, ttk
+from typing import Any, Dict, List, Optional
+
 from core.catalog_manager import CatalogManager
 from gui.component_search import ComponentSearchDialog
+from models.params import Params
 
 
 class ParamsDialog:
@@ -40,31 +42,8 @@ class ParamsDialog:
 
     def _get_default_params(self) -> Dict:
         """Возвращает параметры по умолчанию"""
-        return {
-            "author": "",
-            "code": "*",
-            "directives": {
-                "LDY": False,
-                "LNN": True,
-                "TABL": True,
-                "WPS": False,
-                "LVM": False,
-                "RMIN": "1.E-6",
-            },
-            "PK": 0.1,
-            "PC": 0.1,
-            "AL": 0,
-            "N": 1,
-            "NB": 2,
-            "AL_N": 1,
-            "AL_NB": 1,
-            "variants": [{"id": 1, "concentrations": [50.0, 50.0]}],
-            "components": [
-                {"id": 0, "name": "", "enthalpy": 0.0, "formula": ""},
-                {"id": 0, "name": "", "enthalpy": 0.0, "formula": ""},
-            ],
-            "AL_variants": [{"id": 1, "concentrations": [100.0]}],
-        }
+        params = Params()
+        return params.to_dict()
 
     def _create_widgets(self):
         """Создает все виджеты окна"""
@@ -81,7 +60,9 @@ class ParamsDialog:
 
         scrollable_frame.bind(
             "<Configure>",
-            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")),
+            lambda e: self.main_canvas.configure(
+                scrollregion=self.main_canvas.bbox("all")
+            ),
         )
 
         self.main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -100,7 +81,7 @@ class ParamsDialog:
         def _on_closing():
             self.main_canvas.unbind_all("<MouseWheel>")
             self.dialog.destroy()
-        
+
         self.dialog.protocol("WM_DELETE_WINDOW", _on_closing)
 
         # === Секция 1: Метаданные ===
@@ -120,18 +101,17 @@ class ParamsDialog:
         self.code_entry.bind("<FocusIn>", self._on_focus_in)
 
         # === Секция 2: Директивы ===
-        dir_frame = ttk.LabelFrame(
-            scrollable_frame, text="⚙️ Директивы ", padding=10
-        )
+        dir_frame = ttk.LabelFrame(scrollable_frame, text="⚙️ Директивы ", padding=10)
         dir_frame.pack(fill="x", padx=10, pady=5)
 
         self.directive_vars = {}
         directives_list = [
+            ("LDY", "Плотность"),
             ("LNN", "Концентрации в молях на 1 кг"),
             ("TABL", "Оформление в виде таблицы"),
             ("LVM", "Концентрации: газ-объем%, конд-масса%"),
+            ("WPS", "Генерация PS-файла"),
             ("LMM", "Концентрации в массовых долях"),
-            
         ]
 
         for i, (code, desc) in enumerate(directives_list):
@@ -198,14 +178,12 @@ class ParamsDialog:
         ttk.Button(
             count_frame, text="Построить серию", command=self._make_series_dialog
         ).pack(side="left", padx=20)
-        
 
         # Сетка компонентов
         self.components_frame = ttk.Frame(recipe_frame)
         self.components_frame.pack(fill="x", pady=5)
         self.variants_frame = ttk.Frame(recipe_frame)
         self.variants_frame.pack(fill="x", pady=5)
-
 
         self._create_components_grid()
 
@@ -216,9 +194,9 @@ class ParamsDialog:
         ttk.Button(btn_frame, text="✅ ОК", command=self._on_ok, width=15).pack(
             side="left", padx=5
         )
-        ttk.Button(
-            btn_frame, text="❌ Отмена", command=_on_closing, width=15
-        ).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="❌ Отмена", command=_on_closing, width=15).pack(
+            side="left", padx=5
+        )
         ttk.Button(
             btn_frame, text="💾 Сохранить шаблон", command=self._save_template, width=18
         ).pack(side="left", padx=5)
@@ -411,8 +389,11 @@ class ParamsDialog:
         self.series_frame = ttk.LabelFrame(self.series_dialog, padding=10)
         self.series_frame.pack(fill="both", expand=True)
 
-        ttk.Label(self.series_frame, text="Введите данные для построения серии",
-                  font=("TkDefaultFont", 10, "bold")).grid(row=0, column=0, columnspan=4, padx=3, pady=5)
+        ttk.Label(
+            self.series_frame,
+            text="Введите данные для построения серии",
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=0, column=0, columnspan=4, padx=3, pady=5)
 
         # Получаем названия компонентов из основного окна
         comp_names = []
@@ -421,25 +402,40 @@ class ParamsDialog:
             if btn_text and btn_text != "Выберите компонент...":
                 comp_names.append(btn_text)
             else:
-                comp_names.append(f"Комп. {len(comp_names)+1}")
+                comp_names.append(f"Комп. {len(comp_names) + 1}")
 
         n = int(self.nb_entry.get())
-        comp_options = [f"{i+1}. {comp_names[i]}" for i in range(n)]
+        comp_options = [f"{i + 1}. {comp_names[i]}" for i in range(n)]
 
         # Выбор двух компонентов для изменения через Combobox
-        ttk.Label(self.series_frame, text="Первый изменяемый компонент:").grid(row=1, column=0, padx=3, pady=3, sticky="e")
-        self.fst_comp_combo = ttk.Combobox(self.series_frame, values=comp_options, width=30, state="readonly")
-        self.fst_comp_combo.grid(row=1, column=1, columnspan=2, padx=3, pady=3, sticky="w")
+        ttk.Label(self.series_frame, text="Первый изменяемый компонент:").grid(
+            row=1, column=0, padx=3, pady=3, sticky="e"
+        )
+        self.fst_comp_combo = ttk.Combobox(
+            self.series_frame, values=comp_options, width=30, state="readonly"
+        )
+        self.fst_comp_combo.grid(
+            row=1, column=1, columnspan=2, padx=3, pady=3, sticky="w"
+        )
         self.fst_comp_combo.current(0)
 
-        ttk.Label(self.series_frame, text="Второй изменяемый компонент:").grid(row=2, column=0, padx=3, pady=3, sticky="e")
-        self.scnd_comp_combo = ttk.Combobox(self.series_frame, values=comp_options, width=30, state="readonly")
-        self.scnd_comp_combo.grid(row=2, column=1, columnspan=2, padx=3, pady=3, sticky="w")
+        ttk.Label(self.series_frame, text="Второй изменяемый компонент:").grid(
+            row=2, column=0, padx=3, pady=3, sticky="e"
+        )
+        self.scnd_comp_combo = ttk.Combobox(
+            self.series_frame, values=comp_options, width=30, state="readonly"
+        )
+        self.scnd_comp_combo.grid(
+            row=2, column=1, columnspan=2, padx=3, pady=3, sticky="w"
+        )
         self.scnd_comp_combo.current(1 if n > 1 else 0)
 
         # Кнопка подтверждения выбора компонентов
-        self.confirm_btn = ttk.Button(self.series_frame, text="Подтвердить выбор компонентов", 
-                                       command=self._on_confirm_components)
+        self.confirm_btn = ttk.Button(
+            self.series_frame,
+            text="Подтвердить выбор компонентов",
+            command=self._on_confirm_components,
+        )
         self.confirm_btn.grid(row=3, column=0, columnspan=4, padx=3, pady=10)
 
         # Флаг подтверждения выбора
@@ -447,28 +443,39 @@ class ParamsDialog:
 
         # Контейнер для полей концентраций (изначально скрыт)
         self.conc_container = ttk.Frame(self.series_frame)
-        
+
         # Шаг изменения концентрации
-        ttk.Label(self.conc_container, text="Шаг изменения концентрации (%):").grid(row=0, column=0, padx=3, pady=3, sticky="e")
+        ttk.Label(self.conc_container, text="Шаг изменения концентрации (%):").grid(
+            row=0, column=0, padx=3, pady=3, sticky="e"
+        )
         self.step_entry = ttk.Entry(self.conc_container, width=10)
         self.step_entry.grid(row=0, column=1, padx=3, pady=3, sticky="w")
         self.step_entry.insert(0, "5")
 
         # Начальная и конечная концентрация первого компонента
-        ttk.Label(self.conc_container, text="Начальная концентрация (%):").grid(row=1, column=0, padx=3, pady=3, sticky="e")
+        ttk.Label(self.conc_container, text="Начальная концентрация (%):").grid(
+            row=1, column=0, padx=3, pady=3, sticky="e"
+        )
         self.start_conc_1_entry = ttk.Entry(self.conc_container, width=10)
         self.start_conc_1_entry.grid(row=1, column=1, padx=3, pady=3, sticky="w")
         self.start_conc_1_entry.insert(0, "0")
 
-        ttk.Label(self.conc_container, text="Конечная концентрация (%):").grid(row=2, column=0, padx=3, pady=3, sticky="e")
+        ttk.Label(self.conc_container, text="Конечная концентрация (%):").grid(
+            row=2, column=0, padx=3, pady=3, sticky="e"
+        )
         self.end_conc_1_entry = ttk.Entry(self.conc_container, width=10)
         self.end_conc_1_entry.grid(row=2, column=1, padx=3, pady=3, sticky="w")
         self.end_conc_1_entry.insert(0, "100")
 
         # Начальные концентрации для остальных компонентов
-        ttk.Separator(self.conc_container, orient="horizontal").grid(row=3, column=0, columnspan=4, sticky="ew", pady=10)
-        ttk.Label(self.conc_container, text="Начальные концентрации компонентов (%)",
-                  font=("TkDefaultFont", 9, "bold")).grid(row=4, column=0, columnspan=4, padx=3, pady=5)
+        ttk.Separator(self.conc_container, orient="horizontal").grid(
+            row=3, column=0, columnspan=4, sticky="ew", pady=10
+        )
+        ttk.Label(
+            self.conc_container,
+            text="Начальные концентрации компонентов (%)",
+            font=("TkDefaultFont", 9, "bold"),
+        ).grid(row=4, column=0, columnspan=4, padx=3, pady=5)
 
         # Кнопки будут созданы после подтверждения выбора в _create_conc_entries
 
@@ -489,7 +496,7 @@ class ParamsDialog:
             if btn_text and btn_text != "Выберите компонент...":
                 comp_names.append(btn_text)
             else:
-                comp_names.append(f"Комп. {len(comp_names)+1}")
+                comp_names.append(f"Комп. {len(comp_names) + 1}")
 
         n = int(self.nb_entry.get())
 
@@ -507,7 +514,7 @@ class ParamsDialog:
         """Создаёт поля для ввода начальных концентраций"""
         # Очищаем старые виджеты
         for widget in self.conc_container.grid_slaves():
-            if int(widget.grid_info()['row']) >= 3:
+            if int(widget.grid_info()["row"]) >= 3:
                 widget.destroy()
 
         self.start_conc_entries.clear()
@@ -520,7 +527,9 @@ class ParamsDialog:
             if i == comp_1 or i == comp_2:
                 continue  # Пропускаем изменяемые компоненты
 
-            ttk.Label(self.conc_container, text=f"{i+1}. {comp_names[i]}:").grid(row=row, column=0, padx=3, pady=3, sticky="e")
+            ttk.Label(self.conc_container, text=f"{i + 1}. {comp_names[i]}:").grid(
+                row=row, column=0, padx=3, pady=3, sticky="e"
+            )
             start_conc_entry = ttk.Entry(self.conc_container, width=10)
             start_conc_entry.grid(row=row, column=1, padx=3, pady=3, sticky="w")
             # Предзаполняем средним значением
@@ -530,29 +539,52 @@ class ParamsDialog:
 
         # Добавляем информационные метки для изменяемых компонентов
         info_row = row
-        ttk.Separator(self.conc_container, orient="horizontal").grid(row=info_row, column=0, columnspan=4, sticky="ew", pady=10)
+        ttk.Separator(self.conc_container, orient="horizontal").grid(
+            row=info_row, column=0, columnspan=4, sticky="ew", pady=10
+        )
 
-        ttk.Label(self.conc_container, text=f"✦ {comp_names[comp_1]} — изменяется от 0% до 100%",
-                  foreground="blue").grid(row=info_row+1, column=0, columnspan=4, padx=3, pady=3, sticky="w")
-        ttk.Label(self.conc_container,
-                  text=f"✦ {comp_names[comp_2]} — изменяется компенсаторно (сумма с 1-м = const)",
-                  foreground="blue").grid(row=info_row+2, column=0, columnspan=4, padx=3, pady=3, sticky="w")
+        ttk.Label(
+            self.conc_container,
+            text=f"✦ {comp_names[comp_1]} — изменяется от 0% до 100%",
+            foreground="blue",
+        ).grid(row=info_row + 1, column=0, columnspan=4, padx=3, pady=3, sticky="w")
+        ttk.Label(
+            self.conc_container,
+            text=f"✦ {comp_names[comp_2]} — изменяется компенсаторно (сумма с 1-м = const)",
+            foreground="blue",
+        ).grid(row=info_row + 2, column=0, columnspan=4, padx=3, pady=3, sticky="w")
 
         # Сумма концентраций остальных компонентов
-        other_sum_label = ttk.Label(self.conc_container, text="Сумма остальных концентраций:",
-                                    font=("TkDefaultFont", 9, "bold"))
-        other_sum_label.grid(row=info_row+3, column=0, padx=3, pady=5, sticky="e")
-        self.other_sum_value = ttk.Label(self.conc_container, text="0.0%",
-                                          font=("TkDefaultFont", 9, "bold"), foreground="green")
-        self.other_sum_value.grid(row=info_row+3, column=1, padx=3, pady=5, sticky="w")
+        other_sum_label = ttk.Label(
+            self.conc_container,
+            text="Сумма остальных концентраций:",
+            font=("TkDefaultFont", 9, "bold"),
+        )
+        other_sum_label.grid(row=info_row + 3, column=0, padx=3, pady=5, sticky="e")
+        self.other_sum_value = ttk.Label(
+            self.conc_container,
+            text="0.0%",
+            font=("TkDefaultFont", 9, "bold"),
+            foreground="green",
+        )
+        self.other_sum_value.grid(
+            row=info_row + 3, column=1, padx=3, pady=5, sticky="w"
+        )
 
         # Доступный диапазон для изменяемых компонентов
-        avail_label = ttk.Label(self.conc_container, text="Доступно для изменяемых:",
-                                font=("TkDefaultFont", 9, "bold"))
-        avail_label.grid(row=info_row+4, column=0, padx=3, pady=5, sticky="e")
-        self.avail_value = ttk.Label(self.conc_container, text="100.0%",
-                                      font=("TkDefaultFont", 9, "bold"), foreground="green")
-        self.avail_value.grid(row=info_row+4, column=1, padx=3, pady=5, sticky="w")
+        avail_label = ttk.Label(
+            self.conc_container,
+            text="Доступно для изменяемых:",
+            font=("TkDefaultFont", 9, "bold"),
+        )
+        avail_label.grid(row=info_row + 4, column=0, padx=3, pady=5, sticky="e")
+        self.avail_value = ttk.Label(
+            self.conc_container,
+            text="100.0%",
+            font=("TkDefaultFont", 9, "bold"),
+            foreground="green",
+        )
+        self.avail_value.grid(row=info_row + 4, column=1, padx=3, pady=5, sticky="w")
 
         # Привязываем обновление суммы к полям ввода
         for entry in self.start_conc_entries.values():
@@ -563,11 +595,17 @@ class ParamsDialog:
         btn_row = info_row + 5
         btn_frame = ttk.Frame(self.conc_container)
         btn_frame.grid(row=btn_row, column=0, columnspan=4, pady=10)
-        ttk.Button(btn_frame, text="Построить серию", command=self._build_series).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Отмена", command=self.series_dialog.destroy).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Построить серию", command=self._build_series).pack(
+            side="left", padx=5
+        )
+        ttk.Button(btn_frame, text="Отмена", command=self.series_dialog.destroy).pack(
+            side="left", padx=5
+        )
 
         # Показываем контейнер
-        self.conc_container.grid(row=4, column=0, columnspan=4, padx=3, pady=5, sticky="ns")
+        self.conc_container.grid(
+            row=4, column=0, columnspan=4, padx=3, pady=5, sticky="ns"
+        )
 
         # Инициализируем сумму
         self._update_other_sum()
@@ -575,14 +613,20 @@ class ParamsDialog:
     def _update_other_sum(self, event=None):
         """Обновляет отображение суммы концентраций остальных компонентов"""
         try:
-            other_sum = sum(float(entry.get()) for entry in self.start_conc_entries.values())
+            other_sum = sum(
+                float(entry.get()) for entry in self.start_conc_entries.values()
+            )
             self.other_sum_value.config(text=f"{other_sum:.1f}%")
-            
+
             # Доступно для изменяемых компонентов
-            start_1 = float(self.start_conc_1_entry.get()) if hasattr(self, 'start_conc_1_entry') else 0
+            start_1 = (
+                float(self.start_conc_1_entry.get())
+                if hasattr(self, "start_conc_1_entry")
+                else 0
+            )
             available = 100.0 - other_sum
             self.avail_value.config(text=f"{available:.1f}%")
-            
+
             # Подсветка если сумма слишком большая
             if other_sum >= 100:
                 self.other_sum_value.config(foreground="red")
@@ -593,7 +637,7 @@ class ParamsDialog:
             else:
                 self.other_sum_value.config(foreground="green")
                 self.avail_value.config(foreground="green")
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
     def _build_series(self):
@@ -605,14 +649,14 @@ class ParamsDialog:
         try:
             # Проверка: подтверждён ли выбор компонентов
             if not self.components_confirmed:
-                messagebox.showwarning("Предупреждение", 
-                    "Сначала подтвердите выбор компонентов")
+                messagebox.showwarning(
+                    "Предупреждение", "Сначала подтвердите выбор компонентов"
+                )
                 return
 
             # Получаем номера компонентов (индексация с 0)
             comp_1 = self.fst_comp_combo.current()
             comp_2 = self.scnd_comp_combo.current()
-            nb = int(self.nb_entry.get())
 
             # Параметры изменения концентраций
             step = float(self.step_entry.get())
@@ -638,26 +682,32 @@ class ParamsDialog:
 
             # Проверка: сумма остальных концентраций
             if other_sum >= 100:
-                messagebox.showerror("Ошибка",
+                messagebox.showerror(
+                    "Ошибка",
                     f"Сумма концентраций остальных компонентов ({other_sum:.1f}%) "
-                    f"должна быть меньше 100%")
+                    f"должна быть меньше 100%",
+                )
                 return
 
             # Начальная концентрация 2-го компонента
             start_2 = 100.0 - start_1 - other_sum
-            
+
             if start_2 < 0:
-                messagebox.showerror("Ошибка",
+                messagebox.showerror(
+                    "Ошибка",
                     f"Отрицательная начальная концентрация 2-го компонента ({start_2:.1f}%)\n"
-                    f"Уменьшите сумму остальных концентраций или начальную концентрацию 1-го")
+                    f"Уменьшите сумму остальных концентраций или начальную концентрацию 1-го",
+                )
                 return
 
             # Конечная концентрация 2-го компонента
             end_2 = 100.0 - end_1 - other_sum
             if end_2 < 0:
-                messagebox.showerror("Ошибка",
+                messagebox.showerror(
+                    "Ошибка",
                     f"Отрицательная конечная концентрация 2-го компонента ({end_2:.1f}%)\n"
-                    f"Уменьшите конечную концентрацию 1-го компонента")
+                    f"Уменьшите конечную концентрацию 1-го компонента",
+                )
                 return
 
             # Сумма концентраций двух изменяемых компонентов (константа)
@@ -698,20 +748,8 @@ class ParamsDialog:
 
         except ValueError as e:
             messagebox.showerror("Ошибка", f"Некорректный ввод данных: {e}")
-        
-        
-######### Нужно реализовать непосредвенно построение серии в GUI ##################### 
 
-
-
-
-
-
-
-
-
-        
-
+    ######### Нужно реализовать непосредвенно построение серии в GUI #####################
 
     def _update_components_grid(self):
         """Обновляет сетку компонентов, сохраняя введенные данные"""
@@ -817,7 +855,7 @@ class ParamsDialog:
                     if i < nb:
                         entry.delete(0, "end")
                         entry.insert(0, f"{new_conc:.1f}")
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
     def _on_nb_changed(self):
@@ -920,8 +958,7 @@ class ParamsDialog:
 
     def _clear_validation_errors(self):
         """Сбрасывает все подсветки ошибок"""
-        style = ttk.Style()
-        
+
         # Сброс для полей ввода
         widgets_to_check: List[Any] = [
             self.author_entry,
@@ -949,14 +986,14 @@ class ParamsDialog:
     def _highlight_error(self, widget, message: str):
         """Делает текст поля красным"""
         style = ttk.Style()
-        
+
         # Для Entry виджетов - красный текст
         if isinstance(widget, ttk.Entry):
             widget_id = str(widget)
             style_name = f"Error.{widget_id}.TEntry"
             style.configure(style_name, foreground="red")
             widget.configure(style=style_name)
-            
+
         # Для кнопок - меняем стиль
         elif isinstance(widget, ttk.Button):
             widget_id = str(widget)
@@ -969,7 +1006,7 @@ class ParamsDialog:
         try:
             float(value)
             return True
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return False
 
     def _validate_params(self) -> tuple[bool, str, List[tuple]]:
@@ -1078,17 +1115,20 @@ class ParamsDialog:
                 button_text = self.oxy_search_buttons[0].cget("text")
                 if button_text == "Выберите компонент...":
                     errors.append("Не выбран внешний окислитель")
-                    error_widgets.append((self.oxy_search_buttons[0], "Внешний окислитель"))
+                    error_widgets.append(
+                        (self.oxy_search_buttons[0], "Внешний окислитель")
+                    )
 
                 oxy_id_str = self.oxy_id_entries[0].cget("text").strip()
                 if not oxy_id_str or oxy_id_str == "0":
                     errors.append("Внешний окислитель: не выбран из каталога")
-                    error_widgets.append((self.oxy_search_buttons[0], "Внешний окислитель"))
+                    error_widgets.append(
+                        (self.oxy_search_buttons[0], "Внешний окислитель")
+                    )
 
         # === Проверка концентраций ===
         for var_idx, var_entries in enumerate(self.conc_entries):
             concentrations = []
-            has_error_in_variant = False
             for entry in var_entries:
                 val_str = entry.get().strip()
                 if val_str:
@@ -1099,12 +1139,10 @@ class ParamsDialog:
                                 f"В вариации № {var_idx + 1}: отрицательная концентрация"
                             )
                             error_widgets.append((entry, "Отрицательная"))
-                            has_error_in_variant = True
                         concentrations.append(val)
                     except ValueError:
-                        errors.append(f"Концентрация должна быть числом")
+                        errors.append("Концентрация должна быть числом")
                         error_widgets.append((entry, "Не число"))
-                        has_error_in_variant = True
                 else:
                     concentrations.append(0.0)
 
@@ -1118,14 +1156,14 @@ class ParamsDialog:
                     # Подсвечиваем все поля в этой вариации
                     for entry in var_entries:
                         if entry not in [ew[0] for ew in error_widgets]:
-                            error_widgets.append((entry, f"Сумма ≠ 100"))
+                            error_widgets.append((entry, "Сумма ≠ 100"))
 
         if errors:
             return False, "\n".join(errors), error_widgets
         return True, "", []
 
     def _on_ok(self):
-        """Собирает данные и закрывает окно"""
+        """Собирает данные, валидирует через Params и закрывает окно"""
         # Сначала валидация
         is_valid, error_msg, error_widgets = self._validate_params()
         if not is_valid:
@@ -1137,55 +1175,16 @@ class ParamsDialog:
             return
 
         try:
-            # Директивы
+            # Директивы - добавляем все, включая False значения
             directives = {}
             for code, var in self.directive_vars.items():
-                if var.get():
-                    directives[code] = var.get()
-
-            # Параметры процесса
-            params = {
-                "author": self.author_entry.get().strip(),
-                "code": self.code_entry.get().strip(),
-                "directives": directives,
-                "PK": float(self.pk_entry.get()),
-                "PC": float(self.pc_entry.get()),
-                "AL": float(self.al_entry.get()),
-            }
-
-            if params["AL"] and params["AL"] != 0:
-                params["AL_N"] = 1
-                params["AL_NB"] = 1
-                params["AL_variants"] = [{"id": 1, "concentrations": [100.0]}]
-                # Внешний окислитель - читаем из отдельного списка
-                if len(self.oxy_id_entries) > 0:
-                    comp_id = int(self.oxy_id_entries[0].cget("text").strip() or 0)
-                    formula = self.oxy_formula_entries[0].cget("text").strip()
-                    enthalpy_str = self.oxy_enthalpy_entries[0].cget("text").strip()
-                    enthalpy = float(enthalpy_str) if enthalpy_str else None
-                    # Получаем название компонента из текста кнопки
-                    button_text = self.oxy_search_buttons[0].cget("text")
-                    name = button_text
-                    if button_text == "Выберите компонент...":
-                        raise ValueError("Не выбран внешний окислитель")
-
-                    params["outer_oxy"] = [
-                        {
-                            "id": comp_id,
-                            "name": name,
-                            "formula": formula,
-                            "enthalpy": enthalpy,
-                        }
-                    ]
+                directives[code] = bool(var.get())
 
             # Рецептура
             nb = int(self.nb_entry.get())
             n = int(self.var_entry.get())
-            al_nb = 1 if (params["AL"] and params["AL"] != 0) else 0
-
-            params["NB"] = nb
-            params["N"] = n
-            params["AL_NB"] = al_nb
+            al_value = float(self.al_entry.get())
+            al_nb = 1 if al_value != 0 else 0
 
             # Концентрации
             variants = []
@@ -1196,7 +1195,6 @@ class ParamsDialog:
                     val = float(val_str) if val_str else 0.0
                     concentrations.append(val)
                 variants.append({"id": idx + 1, "concentrations": concentrations})
-            params["variants"] = variants
 
             # Компоненты - основные компоненты (индексы 0..nb-1)
             components = []
@@ -1216,21 +1214,60 @@ class ParamsDialog:
                         "enthalpy": enthalpy,
                     }
                 )
-            params["components"] = components
 
-            self.result = params
+            # AL_variants
+            al_variants = [{"id": 1, "concentrations": [100.0]}]
+
+            # Создаём и валидируем через класс Params
+            params_obj = Params(
+                author=self.author_entry.get().strip(),
+                code=self.code_entry.get().strip(),
+                directives=directives,
+                PK=float(self.pk_entry.get()),
+                PC=float(self.pc_entry.get()),
+                AL=al_value,
+                N=n,
+                NB=nb,
+                AL_N=1 if al_value != 0 else 0,
+                AL_NB=al_nb,
+                variants=variants,
+                components=components,
+                al_variants=al_variants,
+            )
+
+            self.result = params_obj.to_dict()
+
+            # Добавляем outer_oxy если есть внешний окислитель
+            if al_value != 0 and len(self.oxy_id_entries) > 0:
+                comp_id = int(self.oxy_id_entries[0].cget("text").strip() or 0)
+                formula = self.oxy_formula_entries[0].cget("text").strip()
+                enthalpy_str = self.oxy_enthalpy_entries[0].cget("text").strip()
+                enthalpy = float(enthalpy_str) if enthalpy_str else None
+                button_text = self.oxy_search_buttons[0].cget("text")
+                name = button_text
+                if button_text == "Выберите компонент...":
+                    raise ValueError("Не выбран внешний окислитель")
+
+                self.result["outer_oxy"] = [
+                    {
+                        "id": comp_id,
+                        "name": name,
+                        "formula": formula,
+                        "enthalpy": enthalpy,
+                    }
+                ]
+
             # Отписка обработчика прокрутки перед закрытием
             self.main_canvas.unbind_all("<MouseWheel>")
             self.dialog.destroy()
 
         except ValueError as e:
             messagebox.showerror("Ошибка ввода", str(e))
-            
 
     def _save_template(self):
         """Сохранение шаблона"""
-        from tkinter import filedialog
         import json
+        from tkinter import filedialog
 
         filepath = filedialog.asksaveasfilename(
             title="Сохранить шаблон",

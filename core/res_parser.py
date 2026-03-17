@@ -10,9 +10,11 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List
+
+from models.res_component import ResComponent, ResData
+from models.results import Result
 
 logger = logging.getLogger(__name__)
 
@@ -21,48 +23,6 @@ CALCULATION_CONTEXT_LINES_BEFORE = 15
 CALCULATION_CONTEXT_LINES_AFTER = 60
 MAX_GAS_COMPONENTS_DISPLAY = 30
 MAX_GAS_COMPONENTS_DETAILED = 15
-
-
-@dataclass
-class ResComponent:
-    """Компонент смеси из .res файла"""
-
-    name: str
-    hf298: float
-
-
-@dataclass
-class CalculationResult:
-    """Результаты одного расчёта"""
-
-    id: int
-    composition_percent: list[float] = field(default_factory=list)
-    pressure: float = 0.0
-    temperature: float = 0.0
-    enthalpy: float = 0.0
-    entropy: float = 0.0
-    heat_capacity: float = 0.0
-    density: float = 0.0
-    molar_mass: float = 0.0
-    adiabatic_index: float = 0.0
-    volume_gas: float = 0.0  # V гф - объём газовой фазы
-    condensed_fraction: float = 0.0  # Z кф - доля конденсированных продуктов
-    equilibrium_gas: dict = field(default_factory=dict)
-    equilibrium_condensed: dict = field(default_factory=dict)
-    calculation_date: str = ""
-    calculation_time: str = ""
-
-
-@dataclass
-class ResData:
-    """Данные из .res файла"""
-
-    filename: str
-    mixture_name: str = ""
-    mixture_density: float = 0.0
-    components: list[ResComponent] = field(default_factory=list)
-    element_composition: dict = field(default_factory=dict)
-    calculations: list[CalculationResult] = field(default_factory=list)
 
 
 class ResParser:
@@ -148,7 +108,8 @@ class ResParser:
         for idx, marker_idx in enumerate(calc_markers):
             # Берём строки от предыдущего маркера до следующего
             prev_idx = (
-                calc_markers[idx - 1] + 20 if idx > 0
+                calc_markers[idx - 1] + 20
+                if idx > 0
                 else max(0, marker_idx - CALCULATION_CONTEXT_LINES_BEFORE)
             )
             next_idx = (
@@ -177,16 +138,36 @@ class ResParser:
 
     def _parse_single_calculation(
         self, calc_id: int, section_lines: list, all_lines: list, marker_offset: int
-    ) -> CalculationResult:
+    ) -> Result:
         """Парсинг одного расчёта"""
-        calc = CalculationResult(id=calc_id)
+        # Собираем данные в словарь для последующего создания Result
+        calc_data = {
+            "id": calc_id,
+            "composition_percent": [],
+            "pressure": 0.0,
+            "temperature": 0.0,
+            "enthalpy": 0.0,
+            "entropy": 0.0,
+            "heat_capacity": 0.0,
+            "density": 0.0,
+            "molar_mass": 0.0,
+            "adiabatic_index": 0.0,
+            "volume_gas": 0.0,
+            "condensed_fraction": 0.0,
+            "equilibrium_gas": {},
+            "equilibrium_condensed": {},
+            "calculation_date": "",
+            "calculation_time": "",
+        }
 
         # Ищем процентный состав в строках перед маркером
         for i in range(min(marker_offset, len(section_lines))):
             line = section_lines[i]
             match = re.match(r"^\s*\d+\.\s+([\d.]+(?:\s+[\d.]+)+)", line)
             if match:
-                calc.composition_percent = [float(x) for x in match.group(1).split()]
+                calc_data["composition_percent"] = [
+                    float(x) for x in match.group(1).split()
+                ]
                 break
 
         # Парсим термодинамические параметры из строки маркера и следующих
@@ -199,13 +180,13 @@ class ResParser:
                 # P
                 match = re.search(r"P\s+([\d.E+-]+)", line)
                 if match:
-                    calc.pressure = float(match.group(1))
+                    calc_data["pressure"] = float(match.group(1))
 
                 # T - ищем T с последующим числом
                 match = re.search(r"T\s+\S+\s*([\d.E+-]+)", line)
                 if match:
                     try:
-                        calc.temperature = float(match.group(1))
+                        calc_data["temperature"] = float(match.group(1))
                     except ValueError:
                         pass
 
@@ -213,7 +194,7 @@ class ResParser:
                 match = re.search(r"I\s+\S+\s*(-?[\d.E+-]+)", line)
                 if match:
                     try:
-                        calc.enthalpy = float(match.group(1))
+                        calc_data["enthalpy"] = float(match.group(1))
                     except ValueError:
                         pass
 
@@ -221,7 +202,7 @@ class ResParser:
                 match = re.search(r"S\s+\S+\s*([\d.E+-]+)", line)
                 if match:
                     try:
-                        calc.entropy = float(match.group(1))
+                        calc_data["entropy"] = float(match.group(1))
                     except ValueError:
                         pass
 
@@ -231,7 +212,7 @@ class ResParser:
                     try:
                         val = float(match.group(1))
                         if 0.1 < val < 20:
-                            calc.heat_capacity = val
+                            calc_data["heat_capacity"] = val
                     except ValueError:
                         pass
 
@@ -241,7 +222,7 @@ class ResParser:
                     try:
                         val = float(match.group(1))
                         if val > 0.0001:
-                            calc.density = val
+                            calc_data["density"] = val
                     except ValueError:
                         pass
 
@@ -251,7 +232,7 @@ class ResParser:
                     try:
                         val = float(match.group(1))
                         if val > 0.1:
-                            calc.molar_mass = val
+                            calc_data["molar_mass"] = val
                     except ValueError:
                         pass
 
@@ -261,7 +242,7 @@ class ResParser:
                     try:
                         val = float(match.group(1))
                         if val > 0.5:
-                            calc.adiabatic_index = val
+                            calc_data["adiabatic_index"] = val
                     except ValueError:
                         pass
                 break
@@ -270,60 +251,60 @@ class ResParser:
             if "|     P" in line:
                 match = re.search(r"\|\s*P\s+([\d.E+-]+)", line)
                 if match:
-                    calc.pressure = float(match.group(1))
+                    calc_data["pressure"] = float(match.group(1))
 
             if "|     T" in line:
                 match = re.search(r"\|\s*T\s+\S*\s*([\d.E+-]+)", line)
                 if match:
-                    calc.temperature = float(match.group(1))
+                    calc_data["temperature"] = float(match.group(1))
 
             if "|     I" in line:
                 match = re.search(r"\|\s*I\s+\S*\s*(-?[\d.E+-]+)", line)
                 if match:
-                    calc.enthalpy = float(match.group(1))
+                    calc_data["enthalpy"] = float(match.group(1))
 
             if "|     S" in line:
                 match = re.search(r"\|\s*S\s+\S*\s*([\d.E+-]+)", line)
                 if match:
-                    calc.entropy = float(match.group(1))
+                    calc_data["entropy"] = float(match.group(1))
 
-            if "|     C" in line and not calc.heat_capacity:
+            if "|     C" in line and not calc_data["heat_capacity"]:
                 match = re.search(r"\|\s*C\s+\S*\s*([\d.E+-]+)", line)
                 if match:
                     val = float(match.group(1))
                     if 0.1 < val < 20:
-                        calc.heat_capacity = val
+                        calc_data["heat_capacity"] = val
 
-            if "|     R" in line and not calc.density:
+            if "|     R" in line and not calc_data["density"]:
                 match = re.search(r"\|\s*R\s+\S*\s*([\d.E+-]+)", line)
                 if match:
                     val = float(match.group(1))
                     if val > 0.0001:
-                        calc.density = val
+                        calc_data["density"] = val
 
-            if "|     M" in line and not calc.molar_mass:
+            if "|     M" in line and not calc_data["molar_mass"]:
                 match = re.search(r"\|\s*M\s+\S*\s*([\d.E+-]+)", line)
                 if match:
                     val = float(match.group(1))
                     if val > 0.1:
-                        calc.molar_mass = val
+                        calc_data["molar_mass"] = val
 
-            if "|     K" in line and not calc.adiabatic_index:
+            if "|     K" in line and not calc_data["adiabatic_index"]:
                 match = re.search(r"\|\s*K\s+\S*\s*([\d.E+-]+)", line)
                 if match:
                     val = float(match.group(1))
                     if val > 0.5:
-                        calc.adiabatic_index = val
+                        calc_data["adiabatic_index"] = val
 
-            if "|     V" in line and not calc.volume_gas:
+            if "|     V" in line and not calc_data["volume_gas"]:
                 match = re.search(r"\|\s*V\s+\S*\s*([\d.E+-]+)", line)
                 if match:
-                    calc.volume_gas = float(match.group(1))
+                    calc_data["volume_gas"] = float(match.group(1))
 
-            if "|     Z" in line and not calc.condensed_fraction:
+            if "|     Z" in line and not calc_data["condensed_fraction"]:
                 match = re.search(r"\|\s*Z\s+\S*\s*([\d.E+-]+)", line)
                 if match:
-                    calc.condensed_fraction = float(match.group(1))
+                    calc_data["condensed_fraction"] = float(match.group(1))
 
         # Парсим равновесный состав (после строки с параметрами)
         # Ищем строки с компонентами после строки "Pавновесный состав" или пустой строки
@@ -349,7 +330,7 @@ class ResParser:
                     in_composition = True
                     comp = match.group(1)
                     if len(comp) >= 2 and comp not in ["NC"]:
-                        calc.equilibrium_gas[comp] = float(match.group(2))
+                        calc_data["equilibrium_gas"][comp] = float(match.group(2))
                     continue
 
             if in_composition:
@@ -364,7 +345,9 @@ class ResParser:
                     r"\s*(?:\|\s*)?([A-Z][A-Za-z0-9]*)\*\s+([\d.E+-]+)", line
                 )
                 if match:
-                    calc.equilibrium_condensed[match.group(1)] = float(match.group(2))
+                    calc_data["equilibrium_condensed"][match.group(1)] = float(
+                        match.group(2)
+                    )
                     continue
 
                 # Газовая фаза: формат "|     H         3.9021E+00"
@@ -372,7 +355,7 @@ class ResParser:
                 if match:
                     comp = match.group(1)
                     if len(comp) >= 2 and comp not in ["NC"]:
-                        calc.equilibrium_gas[comp] = float(match.group(2))
+                        calc_data["equilibrium_gas"][comp] = float(match.group(2))
                     continue
 
                 # Газовая фаза: обычный формат
@@ -381,17 +364,18 @@ class ResParser:
                     comp = match.group(1)
                     # Пропускаем однобуквенные и параметры
                     if len(comp) >= 2 and comp not in ["NC"]:
-                        calc.equilibrium_gas[comp] = float(match.group(2))
+                        calc_data["equilibrium_gas"][comp] = float(match.group(2))
 
         # Дата и время
         date_match = re.search(
             r"(\d{2}:\d{2}:\d{2})\s+(\d{2}\.\d{2}\.\d{2})", "\n".join(all_lines)
         )
         if date_match:
-            calc.calculation_time = date_match.group(1)
-            calc.calculation_date = date_match.group(2)
+            calc_data["calculation_time"] = date_match.group(1)
+            calc_data["calculation_date"] = date_match.group(2)
 
-        return calc
+        # Создаём и возвращаем Result
+        return Result(**calc_data)
 
 
 def parse_res_file(filepath: str) -> ResData:

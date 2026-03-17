@@ -5,20 +5,20 @@
 с использованием matplotlib
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from typing import List, Dict, Optional
-from dataclasses import dataclass
-import sys
 import os
+import sys
+import tkinter as tk
+from dataclasses import dataclass
+from tkinter import filedialog, messagebox, ttk
+from typing import Dict, List, Optional
 
 # Настройка matplotlib для работы с tkinter
 import matplotlib
 
 matplotlib.use("TkAgg")
+from matplotlib import rcParams
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
-from matplotlib import rcParams
 
 # Настройка шрифтов и стилей
 rcParams["font.family"] = "DejaVu Sans" if sys.platform != "win32" else "Arial"
@@ -41,13 +41,15 @@ class PlotData:
 class ResultsPlotter:
     """Класс для построения графиков результатов расчёта"""
 
-    def __init__(self, parent, res_data_list: List, variants: Optional[List[Dict]] = None):
+    def __init__(
+        self, parent, res_data_list: List, variants: Optional[List[Dict]] = None
+    ):
         """
         Инициализация окна построения графиков
 
         Args:
             parent: Родительское окно
-            res_data_list: Список объектов ResData с результатами расчётов
+            res_data_list: Список объектов ResData с результатами расчётов (содержит List[Result])
             variants: Список вариаций с концентрациями компонентов
         """
         self.parent = parent
@@ -164,13 +166,16 @@ class ResultsPlotter:
         conc_frame = ttk.Frame(settings_frame)
         conc_frame.pack(fill="x", pady=2)
         ttk.Radiobutton(
-            conc_frame, text="Концентрация:", variable=self.x_axis_var, value="concentration"
+            conc_frame,
+            text="Концентрация:",
+            variable=self.x_axis_var,
+            value="concentration",
         ).pack(side="left")
 
         self.component_combo = ttk.Combobox(conc_frame, state="disabled", width=25)
         self.component_combo.pack(side="left", padx=5)
         self._populate_component_combo()
-        
+
         # Тип графика
         ttk.Label(settings_frame, text="Тип графика:").pack(anchor="w")
         self.plot_type = tk.StringVar(value="line")
@@ -276,12 +281,12 @@ class ResultsPlotter:
         """Заполняет выпадающий список названиями компонентов"""
         # Получаем названия компонентов из параметров (если переданы)
         component_names = []
-        
+
         # Ищем компоненты в self.variants_data или используем concentrations для определения количества
         if self.variants and len(self.variants) > 0:
             # Получаем количество компонентов из первой вариации
             concentrations = self.variants[0].get("concentrations", [])
-            
+
             # Пытаемся получить названия компонентов из специального ключа
             first_variant = self.variants[0]
             if "component_names" in first_variant:
@@ -290,7 +295,7 @@ class ResultsPlotter:
                 # Генерируем названия по номерам
                 for i in range(len(concentrations)):
                     component_names.append(f"Компонент {i + 1}")
-            
+
             self.component_combo["values"] = component_names
             if component_names:
                 self.component_combo.current(0)
@@ -306,16 +311,16 @@ class ResultsPlotter:
         # Определяем значения для X-оси
         use_concentration = self.x_axis_var.get() == "concentration"
         calc_count = len(self.res_data_list[0].calculations)
-        
+
         if use_concentration and self.variants:
             # Получаем индекс выбранного компонента
             try:
                 comp_idx = self.component_combo.current()
                 if comp_idx < 0:
                     comp_idx = 0
-            except:
+            except Exception:
                 comp_idx = 0
-            
+
             # Извлекаем концентрации выбранного компонента
             x_values = []
             for variant in self.variants:
@@ -324,7 +329,7 @@ class ResultsPlotter:
                     x_values.append(concentrations[comp_idx])
                 else:
                     x_values.append(0)
-            
+
             # Если вариаций меньше чем расчётов, дополняем номерами
             if len(x_values) < calc_count:
                 x_values = list(range(1, calc_count + 1))
@@ -412,13 +417,17 @@ class ResultsPlotter:
         if use_concentration and self.variants:
             comp_idx = self.component_combo.current()
             if comp_idx >= 0:
-                comp_name = self.component_combo["values"][comp_idx] if self.component_combo["values"] else f"Компонент {comp_idx + 1}"
+                comp_name = (
+                    self.component_combo["values"][comp_idx]
+                    if self.component_combo["values"]
+                    else f"Компонент {comp_idx + 1}"
+                )
                 self.axes.set_xlabel(f"Концентрация: {comp_name} (%)", fontsize=11)
             else:
                 self.axes.set_xlabel("Концентрация (%)", fontsize=11)
         else:
             self.axes.set_xlabel("№ вариации", fontsize=11)
-        
+
         self.axes.set_ylabel("Значение", fontsize=11)
         self.axes.set_title(
             "Зависимость параметров от состава смеси", fontsize=12, fontweight="bold"
@@ -474,7 +483,9 @@ class ResultsPlotter:
                 messagebox.showerror("Ошибка", f"Не удалось сохранить файл:\n{e}")
 
 
-def show_results_plot(parent, res_data_list: List, variants: Optional[List[Dict]] = None):
+def show_results_plot(
+    parent, res_data_list: List, variants: Optional[List[Dict]] = None
+):
     """Удобная функция для показа графика результатов"""
     plotter = ResultsPlotter(parent, res_data_list, variants)
     plotter.show_plot_dialog()

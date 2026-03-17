@@ -10,17 +10,16 @@
 import logging
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
-from typing import Dict, Optional, List
+from tkinter import messagebox, ttk
+from typing import Dict, List, Optional
 
-from core.optimizer import (
-    OptimizationParams,
-    OptimizationTarget,
+from core.optimizers.base_model import (
     OptimizationMode,
+    OptimizationParams,
     OptimizationResult,
-    OptimizationManager,
-    GradientOptimizerParams,
+    OptimizationTarget,
 )
+from core.optimizers.grad import GradientOptimizerParams
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +117,10 @@ class OptimizationDialog:
             mode_frame, text="Минимизация", variable=self.mode_var, value="minimize"
         ).pack(side="left", padx=5)
         ttk.Radiobutton(
-            mode_frame, text="Достижение значения", variable=self.mode_var, value="target"
+            mode_frame,
+            text="Достижение значения",
+            variable=self.mode_var,
+            value="target",
         ).pack(side="left", padx=5)
 
         # Поле для ввода целевого значения (скрыто по умолчанию)
@@ -128,14 +130,14 @@ class OptimizationDialog:
         self.target_value_entry = ttk.Entry(target_frame, width=15)
         self.target_value_entry.grid(row=2, column=1, sticky="w", padx=5, pady=5)
         self.target_value_entry.insert(0, "0")
-        
+
         ttk.Label(target_frame, text="Допуск (%):").grid(
             row=3, column=0, sticky="w", pady=5
         )
         self.target_tolerance_entry = ttk.Entry(target_frame, width=15)
         self.target_tolerance_entry.grid(row=3, column=1, sticky="w", padx=5, pady=5)
         self.target_tolerance_entry.insert(0, "1.0")
-        
+
         # Скрываем поля для целевого режима
         self._on_mode_changed()
 
@@ -212,7 +214,7 @@ class OptimizationDialog:
         method_combo.current(0)
         method_combo.grid(row=4, column=1, sticky="w", padx=5, pady=5)
         method_combo.bind("<<ComboboxSelected>>", self._on_method_changed)
-        
+
         # Словарь для сопоставления названий методов с ключами
         self.method_map = {
             "Квадратичная аппроксимация": "quadratic",
@@ -223,7 +225,7 @@ class OptimizationDialog:
         self.grad_params_frame = ttk.LabelFrame(
             opt_frame, text="⚙️ Параметры градиентного метода", padding=10
         )
-        
+
         ttk.Label(self.grad_params_frame, text="Learning rate:").grid(
             row=0, column=0, sticky="w", pady=5
         )
@@ -254,12 +256,15 @@ class OptimizationDialog:
 
         self.use_momentum_var = tk.BooleanVar(value=True)
         self.momentum_check = ttk.Checkbutton(
-            self.grad_params_frame, text="Использовать моментум", 
-            variable=self.use_momentum_var
+            self.grad_params_frame,
+            text="Использовать моментум",
+            variable=self.use_momentum_var,
         )
         self.momentum_check.grid(row=4, column=0, columnspan=2, sticky="w", pady=5)
 
-        self.grad_params_frame.grid(row=5, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+        self.grad_params_frame.grid(
+            row=5, column=0, columnspan=2, sticky="ew", padx=5, pady=5
+        )
         self.grad_params_frame.grid_remove()  # Скрыть по умолчанию
 
         # === Секция 4: Прогресс ===
@@ -270,7 +275,10 @@ class OptimizationDialog:
 
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(
-            progress_frame, variable=self.progress_var, maximum=100, mode="indeterminate"
+            progress_frame,
+            variable=self.progress_var,
+            maximum=100,
+            mode="indeterminate",
         )
         self.progress_bar.pack(fill="x", pady=5)
 
@@ -290,17 +298,28 @@ class OptimizationDialog:
         btn_frame.pack(fill="x", padx=10, pady=10)
 
         self.start_btn = ttk.Button(
-            btn_frame, text="▶ Запустить оптимизацию", command=self._start_optimization, width=25
+            btn_frame,
+            text="▶ Запустить оптимизацию",
+            command=self._start_optimization,
+            width=25,
         )
         self.start_btn.pack(side="left", padx=5)
 
         self.stop_btn = ttk.Button(
-            btn_frame, text="⏹ Стоп", command=self._stop_optimization, width=15, state="disabled"
+            btn_frame,
+            text="⏹ Стоп",
+            command=self._stop_optimization,
+            width=15,
+            state="disabled",
         )
         self.stop_btn.pack(side="left", padx=5)
 
         self.apply_btn = ttk.Button(
-            btn_frame, text="✅ Применить", command=self._on_apply, width=15, state="disabled"
+            btn_frame,
+            text="✅ Применить",
+            command=self._on_apply,
+            width=15,
+            state="disabled",
         )
         self.apply_btn.pack(side="left", padx=5)
 
@@ -417,7 +436,6 @@ class OptimizationDialog:
             target=self._run_optimization, args=(opt_params,), daemon=True
         )
         thread.start()
-        
 
     def _get_other_concentrations(self, comp1_idx: int, comp2_idx: int) -> List[float]:
         """Получение концентраций остальных компонентов"""
@@ -438,11 +456,12 @@ class OptimizationDialog:
         """Выполнение оптимизации в отдельном потоке"""
         try:
             # Создаем оптимизатор
-            from core.optimizer import OptimizationManager, GradientOptimizer
+            from core.optimizers.base_model import OptimizationManager
+            from core.optimizers.grad import GradientOptimizer
 
             # Получаем ключ метода из названия
             method_key = self.method_map.get(self.method_var.get(), "quadratic")
-            
+
             # Запускаем оптимизацию
             optimizer = OptimizationManager.create_optimizer(
                 method=method_key,
@@ -467,7 +486,7 @@ class OptimizationDialog:
                     raise ValueError(f"Некорректные параметры градиентного метода: {e}")
             else:
                 result = optimizer.optimize(params)
-            
+
             self.result = result
 
             # Обновляем UI после завершения
@@ -475,20 +494,17 @@ class OptimizationDialog:
 
         except Exception as ex:
             import traceback
+
             error_detail = traceback.format_exc()
             logger.error(f"Ошибка оптимизации: {error_detail}")
-            self.parent.root.after(
-                0, lambda e=ex: self._on_optimization_error(str(e))
-            )
+            self.parent.root.after(0, lambda e=ex: self._on_optimization_error(str(e)))
 
-    def _update_progress(
-        self, iter_num: int, total: int, value: float, concentrations
-    ):
+    def _update_progress(self, iter_num: int, total: int, value: float, concentrations):
         """Обновление прогресса оптимизации"""
         self.status_label.config(text=f"Итерация {iter_num} из {total}")
         self.iteration_label.config(text=f"Итерация: {iter_num} / {total}")
         self.current_value_label.config(text=f"Текущее значение: {value:.4f}")
-        
+
         # Отображаем концентрации если это список
         if isinstance(concentrations, list) and concentrations:
             conc_str = ", ".join([f"{c:.1f}" for c in concentrations])

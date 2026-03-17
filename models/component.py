@@ -46,7 +46,9 @@ class Component:
             ValueError: Если ID <= 0, name пустое или formula пустое.
         """
         if self.id <= 0:
-            raise ValueError(f"ID должен быть положительным числом, получено: {self.id}")
+            raise ValueError(
+                f"ID должен быть положительным числом, получено: {self.id}"
+            )
         if not self.name or not self.name.strip():
             raise ValueError("Название компонента не может быть пустым")
         if not self.formula or not self.formula.strip():

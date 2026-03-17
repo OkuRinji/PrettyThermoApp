@@ -11,14 +11,15 @@ import sys
 import tkinter as tk
 from io import StringIO
 from pathlib import Path
-from tkinter import ttk, messagebox
+from tkinter import messagebox, ttk
 
 from config_logging import setup_logging
 from core.catalog_manager import CatalogManager
 from core.ps_generator import PSGenerator
-from core.res_parser import ResParser, ResData
+from core.res_parser import ResParser
 from core.runner import OTVDMMRunner
 from gui.params_dialog import ParamsDialog
+from models.res_component import ResData
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +94,6 @@ class ThermoApp:
         ttk.Button(
             top_frame, text="📝 Параметры", command=self._open_params_dialog, width=15
         ).pack(side="left", padx=5)
-        ttk.Button(
-            top_frame, text="📄 Создать .PS", command=self._generate_ps, width=15
-        ).pack(side="left", padx=5)
         self.fn_entry = tk.Entry(top_frame, width=12)
         self.fn_entry.pack(side="left", padx=5)
         self.fn_entry.insert(0, "New_file")
@@ -152,14 +150,20 @@ class ThermoApp:
         """
         self.output_text.delete("1.0", "end")
         self.output_text.insert("1.0", "=== ПАРАМЕТРЫ РАСЧЕТА ===\n\n")
-        self.output_text.insert("1.0", f"Исполнитель: {params.get('author', 'Каф. ТИПиКМ')}\n")
+        self.output_text.insert(
+            "1.0", f"Исполнитель: {params.get('author', 'Каф. ТИПиКМ')}\n"
+        )
         self.output_text.insert(
             "end",
             f"Директивы: {', '.join([k for k, v in params.get('directives', {}).items() if v])}\n",
         )
-        self.output_text.insert("end", f"PK={params.get('PK')}, PC={params.get('PC')}\n")
+        self.output_text.insert(
+            "end", f"PK={params.get('PK')}, PC={params.get('PC')}\n"
+        )
         self.output_text.insert("end", f"Компонентов: {params.get('NB', 0)}\n")
-        self.output_text.insert("end", "     Компоненты           Энтальпия    Формула\n")
+        self.output_text.insert(
+            "end", "     Компоненты           Энтальпия    Формула\n"
+        )
 
         for comp in params["components"]:
             enthalpy_str = f"{comp['enthalpy']:>9.2f}"
@@ -173,11 +177,16 @@ class ThermoApp:
             conc = variant["concentrations"]
             self.output_text.insert("end", f"{vid}   {conc}\n")
 
-    def _generate_ps(self) -> None:
-        """Генерация PS файла."""
+    def _generate_ps(self) -> bool:
+        """
+        Генерация PS файла.
+
+        Returns:
+            True если файл успешно создан, иначе False.
+        """
         if not self.current_params:
             messagebox.showwarning("Внимание", "Сначала задайте параметры!")
-            return
+            return False
 
         try:
             fn = self.fn_entry.get()
@@ -185,12 +194,18 @@ class ThermoApp:
             self.output_text.insert("end", f"\n✓ Файл создан: {filepath}\n")
             self.status_var.set("✓ .PS файл создан")
             logger.info(f"PS файл создан: {filepath}")
+            return True
         except Exception as e:
             logger.error(f"Ошибка генерации PS файла: {e}")
             messagebox.showerror("Ошибка", str(e))
+            return False
 
     def _run_calculation(self) -> None:
         """Запуск расчета."""
+        # Сначала генерируем PS файл и ждём завершения
+        if not self._generate_ps():
+            return
+
         fn = self.fn_entry.get()
         input_ps = self.work_dir / f"{fn}.ps"
 
@@ -356,16 +371,22 @@ class ThermoApp:
             for comp, value in sorted_gas:
                 output.write(f"  {comp}: {value:.6e}\n")
             if len(calc.equilibrium_gas) > 30:
-                output.write(f"  ... и ещё {len(calc.equilibrium_gas) - 30} компонентов\n")
+                output.write(
+                    f"  ... и ещё {len(calc.equilibrium_gas) - 30} компонентов\n"
+                )
 
         if calc.equilibrium_condensed:
             output.write("\nКонденсированные продукты:\n")
             output.write("-" * 40 + "\n")
-            for comp, value in sorted(calc.equilibrium_condensed.items(), key=lambda x: -x[1]):
+            for comp, value in sorted(
+                calc.equilibrium_condensed.items(), key=lambda x: -x[1]
+            ):
                 output.write(f"  {comp}*: {value:.6e}\n")
 
         if calc.calculation_date:
-            output.write(f"\nДата расчета: {calc.calculation_date} {calc.calculation_time}\n")
+            output.write(
+                f"\nДата расчета: {calc.calculation_date} {calc.calculation_time}\n"
+            )
 
     def _show_raw_results(self, fn: str) -> None:
         """Показ сырого файла результатов при ошибке парсинга."""
@@ -389,7 +410,8 @@ class ThermoApp:
         try:
             if not data.calculations:
                 messagebox.showinfo(
-                    "Информация", "В файле результатов нет расчётов для построения графика"
+                    "Информация",
+                    "В файле результатов нет расчётов для построения графика",
                 )
                 return
 
@@ -404,7 +426,8 @@ class ThermoApp:
                     for variant in variants:
                         variant["component_names"] = component_names
 
-            from core.plotter import ResultsPlotter
+            from gui.plotter import ResultsPlotter
+
             plotter = ResultsPlotter(self.root, [data], variants)
             plotter.show_plot_dialog()
 
@@ -453,8 +476,13 @@ class ThermoApp:
         if not self.current_params:
             return
 
-        if "variants" in self.current_params and len(self.current_params["variants"]) > 0:
-            self.current_params["variants"][0]["concentrations"] = result["concentrations"]
+        if (
+            "variants" in self.current_params
+            and len(self.current_params["variants"]) > 0
+        ):
+            self.current_params["variants"][0]["concentrations"] = result[
+                "concentrations"
+            ]
 
         self.output_text.insert("end", "\n=== РЕЗУЛЬТАТ ОПТИМИЗАЦИИ ===\n")
         self.output_text.insert("end", f"Лучшее значение: {result['best_value']:.4f}\n")

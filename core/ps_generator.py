@@ -8,9 +8,8 @@
 """
 
 import logging
-import os
 from pathlib import Path
-from typing import Dict, List, Any, Union
+from typing import Any, Dict, Union
 
 logger = logging.getLogger(__name__)
 

@@ -12,8 +12,8 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from core.component import Component
 from core.res_parser import ResParser
+from models.component import Component
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 class CatalogManager:
     """
     Менеджер каталога компонентов (потокобезопасный синглтон).
-    
+
     Предназначен для загрузки компонентов из JSON и RES файлов,
     поиска по названию/формуле/ID, и управления каталогом.
-    
+
     Example:
         >>> catalog = CatalogManager()
         >>> catalog.load_from_json("components.json")
@@ -190,7 +190,9 @@ class CatalogManager:
         Returns:
             Список найденных компонентов (пропускает несуществующие ID).
         """
-        return [self.components[comp_id] for comp_id in ids if comp_id in self.components]
+        return [
+            self.components[comp_id] for comp_id in ids if comp_id in self.components
+        ]
 
     def get_all(self) -> List[Component]:
         """

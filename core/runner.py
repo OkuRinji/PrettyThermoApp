@@ -8,12 +8,11 @@
 """
 
 import logging
-import os
 import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -152,9 +151,7 @@ class OTVDMMRunner:
         if async_mode:
             # Запуск в отдельном потоке
             logger.debug("Запуск расчета в асинхронном режиме")
-            thread = threading.Thread(
-                target=_run_process, args=(ps_file,), daemon=True
-            )
+            thread = threading.Thread(target=_run_process, args=(ps_file,), daemon=True)
             thread.start()
             return True
         else:
