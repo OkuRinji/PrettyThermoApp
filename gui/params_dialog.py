@@ -84,25 +84,30 @@ class ParamsDialog:
 
         self.dialog.protocol("WM_DELETE_WINDOW", _on_closing)
 
-        # === Секция 1: Метаданные ===
-        meta_frame = ttk.LabelFrame(scrollable_frame, text="📋 Метаданные", padding=10)
-        meta_frame.pack(fill="x", padx=10, pady=5)
+        # === Секция 1: Директивы ===
+        self.directives_expanded = tk.BooleanVar(value=False)  # По умолчанию свернуто
 
-        ttk.Label(meta_frame, text="Исполнитель:").grid(
-            row=0, column=0, sticky="w", pady=2
+        dir_header_frame = ttk.Frame(scrollable_frame)
+        dir_header_frame.pack(fill="x", padx=10, pady=(10, 0))
+
+        ttk.Label(
+            dir_header_frame,
+            text="⚙️ Директивы",
+            font=("TkDefaultFont", 10, "bold")
+        ).pack(side="left")
+
+        self.toggle_btn = ttk.Button(
+            dir_header_frame,
+            text="▶ Развернуть",
+            command=self._toggle_directives,
+            width=12
         )
-        self.author_entry = ttk.Entry(meta_frame, width=40)
-        self.author_entry.grid(row=0, column=1, padx=5, pady=2)
-        self.author_entry.bind("<FocusIn>", self._on_focus_in)
+        self.toggle_btn.pack(side="left", padx=10)
 
-        ttk.Label(meta_frame, text="Шифр:").grid(row=0, column=2, sticky="w", pady=2)
-        self.code_entry = ttk.Entry(meta_frame, width=20)
-        self.code_entry.grid(row=0, column=3, padx=5, pady=2)
-        self.code_entry.bind("<FocusIn>", self._on_focus_in)
-
-        # === Секция 2: Директивы ===
-        dir_frame = ttk.LabelFrame(scrollable_frame, text="⚙️ Директивы ", padding=10)
-        dir_frame.pack(fill="x", padx=10, pady=5)
+        # Контейнер для директив (сворачиваемый)
+        self.directives_frame = ttk.Frame(scrollable_frame)
+        # Не pack'им сразу - покажем при разворачивании
+        self._directives_packed = False  # Флаг для отслеживания pack
 
         self.directive_vars = {}
         directives_list = [
@@ -114,13 +119,14 @@ class ParamsDialog:
             ("LMM", "Концентрации в массовых долях"),
         ]
 
+        # Создаем виджеты директив внутри сворачиваемого контейнера
         for i, (code, desc) in enumerate(directives_list):
             var = tk.BooleanVar(value=False)
             self.directive_vars[code] = var
-            cb = ttk.Checkbutton(dir_frame, text=f"{code} - {desc}", variable=var)
+            cb = ttk.Checkbutton(self.directives_frame, text=f"{code} - {desc}", variable=var)
             cb.grid(row=i // 2, column=i % 2, sticky="w", pady=1)
 
-        # === Секция 3: Параметры процесса ===
+        # === Секция 2: Параметры процесса ===
         proc_frame = ttk.LabelFrame(
             scrollable_frame, text="🔧 Параметры процесса", padding=10
         )
@@ -179,11 +185,52 @@ class ParamsDialog:
             count_frame, text="Построить серию", command=self._make_series_dialog
         ).pack(side="left", padx=20)
 
-        # Сетка компонентов
-        self.components_frame = ttk.Frame(recipe_frame)
-        self.components_frame.pack(fill="x", pady=5)
-        self.variants_frame = ttk.Frame(recipe_frame)
-        self.variants_frame.pack(fill="x", pady=5)
+        # Вертикальный разделитель для компонентов и вариаций
+        self.paned = ttk.PanedWindow(recipe_frame, orient="vertical")
+        self.paned.pack(fill="both", expand=True, pady=5)
+
+        # Сетка компонентов (верхняя панель)
+        self.components_frame = ttk.Frame(self.paned)
+        self.paned.add(self.components_frame, weight=1)
+
+        # Сетка вариаций (нижняя панель с прокруткой и рамкой)
+        variants_label_frame = ttk.LabelFrame(self.paned, text="📊 Вариации концентраций", padding=5)
+        self.paned.add(variants_label_frame, weight=2)
+        
+        # Создаём Canvas с прокруткой для вариаций внутри LabelFrame
+        self.variants_canvas = tk.Canvas(variants_label_frame, highlightthickness=0)
+        self.variants_scrollbar = ttk.Scrollbar(
+            variants_label_frame, orient="vertical", command=self.variants_canvas.yview
+        )
+        self.variants_frame = ttk.Frame(self.variants_canvas)
+
+        self.variants_frame.bind(
+            "<Configure>",
+            lambda e: self.variants_canvas.configure(
+                scrollregion=self.variants_canvas.bbox("all")
+            ),
+        )
+
+        self.variants_canvas_window = self.variants_canvas.create_window(
+            (0, 0), window=self.variants_frame, anchor="nw"
+        )
+        self.variants_canvas.configure(yscrollcommand=self.variants_scrollbar.set)
+
+        self.variants_canvas.pack(side="left", fill="both", expand=True)
+        self.variants_scrollbar.pack(side="right", fill="y")
+
+        # Прокрутка колесиком для вариаций
+        def _on_variants_mousewheel(event):
+            self.variants_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        self.variants_canvas.bind_all("<MouseWheel>", _on_variants_mousewheel)
+
+        # Отписка при закрытии
+        def _on_closing_dialog():
+            self.variants_canvas.unbind_all("<MouseWheel>")
+            self.dialog.destroy()
+
+        self.dialog.protocol("WM_DELETE_WINDOW", _on_closing_dialog)
 
         self._create_components_grid()
 
@@ -276,7 +323,7 @@ class ParamsDialog:
         except ValueError:
             var_cnt = 1
 
-        # Заголовки
+        # Заголовки компонентов
         ttk.Label(
             self.components_frame, text="Компонент", font=("TkDefaultFont", 9, "bold")
         ).grid(row=0, column=0, padx=5, pady=2)
@@ -322,7 +369,7 @@ class ParamsDialog:
 
         # Сетка вариаций
         ttk.Label(
-            self.variants_frame, text="№ Вариации", font=("TkDefaultFont", 9, "bold")
+            self.variants_frame, text="№", font=("TkDefaultFont", 9, "bold")
         ).grid(row=0, column=0, padx=5, pady=2)
         ttk.Label(
             self.variants_frame, text="Компонент", font=("TkDefaultFont", 9, "bold")
@@ -343,7 +390,7 @@ class ParamsDialog:
                     pady=(15, 5),
                 )
 
-            # Номер вариации с рамкой (смещаем строку на количество сепараторов)
+            # Номер вариации с рамкой
             var_row = var_num * (nb + 1) + 1
             var_label = ttk.Label(
                 self.variants_frame,
@@ -867,9 +914,6 @@ class ParamsDialog:
         # Сбрасываем флаг при загрузке
         self.nb_changed = False
 
-        self.author_entry.insert(0, params.get("author", ""))
-        self.code_entry.insert(0, params.get("code", "*"))
-
         # Директивы
         for code, var in self.directive_vars.items():
             var.set(params.get("directives", {}).get(code, False))
@@ -956,13 +1000,37 @@ class ParamsDialog:
         # Просто возвращаем стандартный стиль (чёрный текст)
         widget.configure(style="TEntry")
 
+    def _toggle_directives(self):
+        """Переключение сворачивания/разворачивания панели директив"""
+        if self.directives_expanded.get():
+            # Сворачиваем - скрываем панель
+            self.directives_frame.pack_forget()
+            self.toggle_btn.config(text="▶ Развернуть")
+            self.directives_expanded.set(False)
+            self._directives_packed = False
+        else:
+            # Разворачиваем - показываем панель ПЕРЕД секцией параметров процесса
+            # Находим proc_frame среди дочерних виджетов scrollable_frame
+            proc_frame = None
+            for widget in self.directives_frame.master.winfo_children():
+                if isinstance(widget, ttk.LabelFrame) and "Параметры процесса" in widget.cget("text"):
+                    proc_frame = widget
+                    break
+            
+            if proc_frame:
+                self.directives_frame.pack(fill="x", padx=10, pady=5, before=proc_frame)
+            else:
+                self.directives_frame.pack(fill="x", padx=10, pady=5)
+            
+            self.toggle_btn.config(text="▼ Свернуть")
+            self.directives_expanded.set(True)
+            self._directives_packed = True
+
     def _clear_validation_errors(self):
         """Сбрасывает все подсветки ошибок"""
 
         # Сброс для полей ввода
         widgets_to_check: List[Any] = [
-            self.author_entry,
-            self.code_entry,
             self.pk_entry,
             self.pc_entry,
             self.al_entry,
@@ -1059,12 +1127,6 @@ class ParamsDialog:
             except ValueError:
                 errors.append("AL должно быть числовым значением")
                 error_widgets.append((self.al_entry, "AL должно быть числом"))
-
-        # === Проверка кода ===
-        code = self.code_entry.get().strip()
-        if not code:
-            errors.append("Код не может быть пустым")
-            error_widgets.append((self.code_entry, "Код не может быть пустым"))
 
         # === Проверка количества компонентов и вариаций ===
         nb_str = self.nb_entry.get().strip()
@@ -1220,8 +1282,8 @@ class ParamsDialog:
 
             # Создаём и валидируем через класс Params
             params_obj = Params(
-                author=self.author_entry.get().strip(),
-                code=self.code_entry.get().strip(),
+                author="Белобородов",
+                code="*",
                 directives=directives,
                 PK=float(self.pk_entry.get()),
                 PC=float(self.pc_entry.get()),

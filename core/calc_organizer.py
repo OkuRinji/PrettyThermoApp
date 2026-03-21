@@ -421,3 +421,66 @@ class Calculator:
             ResultSeries с накопленными результатами.
         """
         return self.series
+
+    @classmethod
+    def load_series_from_res_files(
+        cls,
+        res_files: list[str],
+        params: Params | None = None,
+        logger: logging.Logger | None = None,
+        base_path: Path | None = None,
+    ) -> ResultSeries:
+        """
+        Загрузить серию результатов из готовых .res файлов.
+
+        Метод позволяет загрузить результаты из предварительно рассчитанных
+        .res файлов, предоставленных пользователем.
+
+        Args:
+            res_files: Список путей к .res файлам.
+            params: Параметры расчета (опционально).
+            logger: Логгер для вывода сообщений.
+            base_path: Базовый путь для определения work_dir.
+
+        Returns:
+            ResultSeries с загруженными результатами.
+        """
+        if logger is None:
+            logger = logging.getLogger(__name__)
+
+        series = ResultSeries(params=params)
+        work_dir = base_path / "TERMO" if base_path else Path("TERMO")
+
+        for res_path in res_files:
+            try:
+                # Если путь относительный, добавляем work_dir
+                path = Path(res_path)
+                if not path.is_absolute():
+                    path = work_dir / res_path
+
+                if not path.exists():
+                    logger.warning(f"Файл не найден: {path}")
+                    continue
+
+                parser = ResParser(str(path))
+                data = parser.parse()
+
+                # Сохраняем метаданные серии из первого файла
+                if not series.mixture_name and data.mixture_name:
+                    series.mixture_name = data.mixture_name
+                    series.mixture_density = data.mixture_density
+                    series.element_composition = data.element_composition
+                    series.components = data.components
+
+                # Добавляем все расчеты из файла в серию
+                for calc in data.calculations:
+                    series.add_result(calc)
+
+                logger.info(f"Загружено {len(data.calculations)} результатов из {path.name}")
+
+            except Exception as e:
+                logger.error(f"Ошибка загрузки из {res_path}: {e}")
+                continue
+
+        logger.info(f"Загружено всего результатов в серию: {len(series)}")
+        return series
