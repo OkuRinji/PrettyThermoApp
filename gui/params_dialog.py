@@ -48,9 +48,6 @@ class ParamsDialog:
     def _create_widgets(self):
         """Создает все виджеты окна"""
 
-        # Флаг изменения количества компонентов
-        self.nb_changed = False
-
         # Главный контейнер с прокруткой
         self.main_canvas = tk.Canvas(self.dialog)
         scrollbar = ttk.Scrollbar(
@@ -153,6 +150,7 @@ class ParamsDialog:
         self.al_entry.grid(row=1, column=1, padx=5, pady=2)
         self.al_entry.insert(0, "0")
         self.al_entry.bind("<FocusIn>", self._on_focus_in)
+        self.al_entry.bind("<KeyRelease>", lambda e: self._on_al_changed())
 
         # === Секция 4: Рецептура ===
         recipe_frame = ttk.LabelFrame(
@@ -175,28 +173,21 @@ class ParamsDialog:
         )
         self.var_entry = ttk.Entry(count_frame, width=5)
         self.var_entry.pack(side="left", padx=5)
+        self.var_entry.bind("<KeyRelease>", lambda e: self._on_var_changed())
         self.var_entry.bind("<FocusIn>", self._on_focus_in)
-
-        ttk.Button(
-            count_frame, text="Применить", command=self._update_components_grid
-        ).pack(side="left", padx=20)
 
         ttk.Button(
             count_frame, text="Построить серию", command=self._make_series_dialog
         ).pack(side="left", padx=20)
 
-        # Вертикальный разделитель для компонентов и вариаций
-        self.paned = ttk.PanedWindow(recipe_frame, orient="vertical")
-        self.paned.pack(fill="both", expand=True, pady=5)
+        # Сетка компонентов (верхняя часть)
+        self.components_frame = ttk.Frame(recipe_frame)
+        self.components_frame.pack(fill="x", pady=5)
 
-        # Сетка компонентов (верхняя панель)
-        self.components_frame = ttk.Frame(self.paned)
-        self.paned.add(self.components_frame, weight=1)
+        # Сетка вариаций (нижняя часть с прокруткой и рамкой)
+        variants_label_frame = ttk.LabelFrame(recipe_frame, text="📊 Вариации концентраций", padding=5)
+        variants_label_frame.pack(fill="both", expand=True, pady=5)
 
-        # Сетка вариаций (нижняя панель с прокруткой и рамкой)
-        variants_label_frame = ttk.LabelFrame(self.paned, text="📊 Вариации концентраций", padding=5)
-        self.paned.add(variants_label_frame, weight=2)
-        
         # Создаём Canvas с прокруткой для вариаций внутри LabelFrame
         self.variants_canvas = tk.Canvas(variants_label_frame, highlightthickness=0)
         self.variants_scrollbar = ttk.Scrollbar(
@@ -420,9 +411,13 @@ class ParamsDialog:
 
                 conc_entry = ttk.Entry(self.variants_frame, width=10)
                 conc_entry.grid(row=comp_row, column=2, padx=3, pady=2)
-                conc_entry.insert(0, f"{100 / nb:.1f}")
                 conc_entry.bind("<FocusIn>", self._on_focus_in)
                 self.conc_entries[-1].append(conc_entry)
+
+        # Обновляем область прокрутки главного canvas после создания всех элементов
+        self.main_canvas.configure(
+            scrollregion=self.main_canvas.bbox("all")
+        )
 
     def _make_series_dialog(self):
         """Создаёт диалоговое окно для построения серии расчётов"""
@@ -568,7 +563,6 @@ class ParamsDialog:
 
         # Создаём поля только для неизменяемых компонентов
         row = 5
-        other_conc_default = 100.0 / (n - 1) if n > 1 else 0
 
         for i in range(n):
             if i == comp_1 or i == comp_2:
@@ -579,8 +573,6 @@ class ParamsDialog:
             )
             start_conc_entry = ttk.Entry(self.conc_container, width=10)
             start_conc_entry.grid(row=row, column=1, padx=3, pady=3, sticky="w")
-            # Предзаполняем средним значением
-            start_conc_entry.insert(0, f"{other_conc_default:.1f}")
             self.start_conc_entries[i] = start_conc_entry
             row += 1
 
@@ -799,10 +791,11 @@ class ParamsDialog:
     ######### Нужно реализовать непосредвенно построение серии в GUI #####################
 
     def _update_components_grid(self):
-        """Обновляет сетку компонентов, сохраняя введенные данные"""
+        """Обновляет сетку компонентов и вариаций, сохраняя введенные данные"""
         # Определяем, есть ли внешний окислитель
         al_value = self.al_entry.get().strip() if hasattr(self, "al_entry") else "0"
         has_outer_oxy = al_value != "0"
+        
         # Сохраняем текущие значения основных компонентов
         saved_components = []
         for i in range(len(self.id_entries)):
@@ -856,13 +849,13 @@ class ParamsDialog:
                         self.conc_entries[var_idx][comp_idx].delete(0, "end")
                         self.conc_entries[var_idx][comp_idx].insert(0, value)
 
-        # Пересчитываем концентрации на равные доли (100/NB) только если NB изменилось
-        if self.nb_changed:
-            self._recalculate_concentrations()
-            self.nb_changed = False  # Сбрасываем флаг после пересчета
-
         # Обновляем названия компонентов в вариациях
         self._update_variants_labels()
+
+        # Обновляем область прокрутки главного canvas
+        self.main_canvas.configure(
+            scrollregion=self.main_canvas.bbox("all")
+        )
 
     def _update_variants_labels(self):
         """Обновляет названия компонентов в сетке вариаций"""
@@ -886,33 +879,20 @@ class ParamsDialog:
                     if isinstance(widget, ttk.Label):
                         widget.config(text=comp_name, anchor="w", width=30)
 
-    def _recalculate_concentrations(self):
-        """Пересчитывает концентрации при изменении количества компонентов"""
-        try:
-            nb = int(self.nb_entry.get()) if self.nb_entry.get() else 2
-            if nb <= 0:
-                return
-
-            # Новая концентрация для каждого компонента
-            new_conc = 100.0 / nb
-
-            # Обновляем все поля концентраций
-            for var_entries in self.conc_entries:
-                for i, entry in enumerate(var_entries):
-                    if i < nb:
-                        entry.delete(0, "end")
-                        entry.insert(0, f"{new_conc:.1f}")
-        except ValueError, TypeError:
-            pass
-
     def _on_nb_changed(self):
-        """Отслеживает изменение количества компонентов"""
-        self.nb_changed = True
+        """Отслеживает изменения количества компонентов и обновляет сетку"""
+        self._update_components_grid()
+
+    def _on_var_changed(self):
+        """Отслеживает изменение количества вариаций и обновляет сетку"""
+        self._update_components_grid()
+
+    def _on_al_changed(self):
+        """Отслеживает изменение участия внешнего окислителя и обновляет сетку"""
+        self._update_components_grid()
 
     def _load_params(self, params: Dict):
         """Загружает параметры в виджеты"""
-        # Сбрасываем флаг при загрузке
-        self.nb_changed = False
 
         # Директивы
         for code, var in self.directive_vars.items():
@@ -960,6 +940,17 @@ class ParamsDialog:
                 self.oxy_enthalpy_entries[0].config(text=f"{oxy['enthalpy']:.2f}")
             else:
                 self.oxy_enthalpy_entries[0].config(text="")
+
+        # Загружаем концентрации из вариаций
+        variants = params.get("variants", [])
+        for var_idx, variant in enumerate(variants):
+            if var_idx < len(self.conc_entries):
+                concentrations = variant.get("concentrations", [])
+                for comp_idx, conc in enumerate(concentrations):
+                    if comp_idx < len(self.conc_entries[var_idx]):
+                        entry = self.conc_entries[var_idx][comp_idx]
+                        entry.delete(0, "end")
+                        entry.insert(0, f"{conc:.2f}")
 
         # Обновляем названия компонентов в вариациях
         self._update_variants_labels()

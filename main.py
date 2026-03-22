@@ -101,7 +101,7 @@ class ThermoApp:
         # Заголовок
         ttk.Label(
             control_frame,
-            text="TERMO94",
+            text="Pyro 1.2",
             font=("TkDefaultFont", 12, "bold")
         ).pack(pady=(0, 15))
 
