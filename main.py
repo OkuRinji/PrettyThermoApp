@@ -14,14 +14,15 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from config_logging import setup_logging
+from core.calc_organizer import Calculator
 from core.catalog_manager import CatalogManager
 from core.ps_generator import PSGenerator
 from core.res_parser import ResParser
 from core.runner import OTVDMMRunner
-from core.calc_organizer import Calculator
 from gui.params_dialog import ParamsDialog
-from models.res_component import ResData
 from models.params import Params
+from models.res_component import ResData
+from models.results import ResultSeries
 
 logger = logging.getLogger(__name__)
 
@@ -100,38 +101,60 @@ class ThermoApp:
 
         # Заголовок
         ttk.Label(
-            control_frame,
-            text="Pyro 1.2",
-            font=("TkDefaultFont", 12, "bold")
+            control_frame, text="Pyro 1.2", font=("TkDefaultFont", 12, "bold")
         ).pack(pady=(0, 15))
 
         # Кнопки управления
         ttk.Button(
-            control_frame, text="📝 Задать параметры", command=self._open_params_dialog, width=20
+            control_frame,
+            text="📝 Задать параметры",
+            command=self._open_params_dialog,
+            width=20,
         ).pack(pady=5, fill="x")
 
         # Поле имени файла
-        fn_label = ttk.Label(control_frame, text="Имя файла:")
-        fn_label.pack(pady=(15, 5))
-        self.fn_entry = tk.Entry(control_frame, width=22)
-        self.fn_entry.pack(pady=5, fill="x")
-        self.fn_entry.insert(0, "New_file")
-
+       
         # Кнопки действий
         ttk.Button(
-            control_frame, text="▶ Запуск расчета", command=self._run_calculation, width=20
+            control_frame,
+            text="▶ Запуск расчета",
+            command=self._run_calculation,
+            width=20,
         ).pack(pady=5, fill="x")
         ttk.Button(
-            control_frame, text="📊 Результаты расчета", command=self._show_results, width=20
+            control_frame,
+            text="📈 Построить график ",
+            command=self._show_plots,
+            width=20,
         ).pack(pady=5, fill="x")
         ttk.Button(
-            control_frame, text="📈 Построить график ", command=self._show_plots, width=20
+            control_frame,
+            text="💾 Сохранить результаты",
+            command=self._save_results,
+            width=20,
         ).pack(pady=5, fill="x")
         ttk.Button(
-            control_frame, text="🔍 Оптимизация", command=self._run_optimization, width=20
+            control_frame,
+            text="📂 Загрузить результаты",
+            command=self._load_res_json_results,
+            width=20,
         ).pack(pady=5, fill="x")
         ttk.Button(
-            control_frame, text="📂 Загрузить .res", command=self._load_res_files, width=20
+            control_frame,
+            text="📊 Таблица результатов ",
+            command=self._show_results,
+            width=20,
+        ).pack(pady=5, fill="x")
+
+        # Разделитель
+        ttk.Separator(control_frame, orient="horizontal").pack(fill="x", pady=10)
+
+        # Кнопка помощи
+        ttk.Button(
+            control_frame,
+            text="❓ Инструкция",
+            command=self._show_help_window,
+            width=20,
         ).pack(pady=5, fill="x")
 
         # Разделитель
@@ -142,8 +165,12 @@ class ThermoApp:
             value=f"Каталог:\n{self.catalog.get_count()} комп."
         )
         status_label = ttk.Label(
-            control_frame, textvariable=self.status_var, relief="sunken",
-            padding=5, anchor="w", wraplength=180
+            control_frame,
+            textvariable=self.status_var,
+            relief="sunken",
+            padding=5,
+            anchor="w",
+            wraplength=180,
         )
         status_label.pack(fill="x", side="bottom", pady=(20, 0))
 
@@ -152,53 +179,69 @@ class ThermoApp:
         right_frame.pack(side="right", fill="both", expand=True)
 
         # === Панель текущих параметров (верхняя часть) ===
-        params_frame = ttk.LabelFrame(right_frame, text="📋 Текущие параметры расчета", padding=10)
+        params_frame = ttk.LabelFrame(
+            right_frame, text="📋 Текущие параметры расчета", padding=10
+        )
         params_frame.pack(fill="x", padx=5, pady=5)
 
         # Сетка для параметров
         self.params_info = {}
 
         # Строка 0: Давления
-        ttk.Label(params_frame, text="PK (камера), МПа:", font=("TkDefaultFont", 9, "bold")).grid(
-            row=0, column=0, sticky="w", padx=5, pady=2
-        )
+        ttk.Label(
+            params_frame, text="PK (камера), МПа:", font=("TkDefaultFont", 9, "bold")
+        ).grid(row=0, column=0, sticky="w", padx=5, pady=2)
         self.params_info["pk"] = ttk.Label(params_frame, text="—", anchor="w", width=15)
         self.params_info["pk"].grid(row=0, column=1, sticky="w", padx=5, pady=2)
 
-        ttk.Label(params_frame, text="PC (срез), МПа:", font=("TkDefaultFont", 9, "bold")).grid(
-            row=0, column=2, sticky="w", padx=5, pady=2
-        )
+        ttk.Label(
+            params_frame, text="PC (срез), МПа:", font=("TkDefaultFont", 9, "bold")
+        ).grid(row=0, column=2, sticky="w", padx=5, pady=2)
         self.params_info["pc"] = ttk.Label(params_frame, text="—", anchor="w", width=15)
         self.params_info["pc"].grid(row=0, column=3, sticky="w", padx=5, pady=2)
 
         # Строка 1: Количество компонентов и вариаций
-        ttk.Label(params_frame, text="Компонентов:", font=("TkDefaultFont", 9, "bold")).grid(
-            row=1, column=0, sticky="w", padx=5, pady=2
+        ttk.Label(
+            params_frame, text="Компонентов:", font=("TkDefaultFont", 9, "bold")
+        ).grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        self.params_info["components_count"] = ttk.Label(
+            params_frame, text="—", anchor="w", width=15
         )
-        self.params_info["components_count"] = ttk.Label(params_frame, text="—", anchor="w", width=15)
-        self.params_info["components_count"].grid(row=1, column=1, sticky="w", padx=5, pady=2)
+        self.params_info["components_count"].grid(
+            row=1, column=1, sticky="w", padx=5, pady=2
+        )
 
-        ttk.Label(params_frame, text="Вариаций:", font=("TkDefaultFont", 9, "bold")).grid(
-            row=1, column=2, sticky="w", padx=5, pady=2
+        ttk.Label(
+            params_frame, text="Вариаций:", font=("TkDefaultFont", 9, "bold")
+        ).grid(row=1, column=2, sticky="w", padx=5, pady=2)
+        self.params_info["variants_count"] = ttk.Label(
+            params_frame, text="—", anchor="w", width=15
         )
-        self.params_info["variants_count"] = ttk.Label(params_frame, text="—", anchor="w", width=15)
-        self.params_info["variants_count"].grid(row=1, column=3, sticky="w", padx=5, pady=2)
+        self.params_info["variants_count"].grid(
+            row=1, column=3, sticky="w", padx=5, pady=2
+        )
 
         # Строка 2: Директивы
-        ttk.Label(params_frame, text="Директивы:", font=("TkDefaultFont", 9, "bold")).grid(
-            row=2, column=0, sticky="w", padx=5, pady=2
+        ttk.Label(
+            params_frame, text="Директивы:", font=("TkDefaultFont", 9, "bold")
+        ).grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        self.params_info["directives"] = ttk.Label(
+            params_frame, text="—", anchor="w", width=40
         )
-        self.params_info["directives"] = ttk.Label(params_frame, text="—", anchor="w", width=40)
-        self.params_info["directives"].grid(row=2, column=1, columnspan=3, sticky="w", padx=5, pady=2)
+        self.params_info["directives"].grid(
+            row=2, column=1, columnspan=3, sticky="w", padx=5, pady=2
+        )
 
         # Строка 3: Список компонентов (заголовок)
-        ttk.Label(params_frame, text="Компоненты:", font=("TkDefaultFont", 9, "bold")).grid(
-            row=3, column=0, sticky="nw", padx=5, pady=2
-        )
+        ttk.Label(
+            params_frame, text="Компоненты:", font=("TkDefaultFont", 9, "bold")
+        ).grid(row=3, column=0, sticky="nw", padx=5, pady=2)
 
         # Фрейм для списка компонентов в столбик
         components_list_frame = ttk.Frame(params_frame)
-        components_list_frame.grid(row=3, column=1, columnspan=3, sticky="w", padx=5, pady=2)
+        components_list_frame.grid(
+            row=3, column=1, columnspan=3, sticky="w", padx=5, pady=2
+        )
         self.params_info["components_list_frame"] = components_list_frame
         self.params_info["components_labels"] = []
 
@@ -215,9 +258,14 @@ class ThermoApp:
         )
         self.output_text.pack(fill="both", expand=True)
 
-        scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.output_text.yview)
+        scrollbar = ttk.Scrollbar(
+            results_frame, orient="vertical", command=self.output_text.yview
+        )
         scrollbar.pack(side="right", fill="y")
         self.output_text.configure(yscrollcommand=scrollbar.set)
+
+        # Вывод инструкции при запуске
+        self._show_startup_instructions()
 
     def _open_params_dialog(self) -> None:
         """Открытие диалога параметров."""
@@ -244,17 +292,13 @@ class ThermoApp:
         self.params_info["pc"].config(text=f"{params.get('PC', 0):.3f}")
 
         # Количество компонентов и вариаций
-        self.params_info["components_count"].config(
-            text=str(params.get("NB", 0))
-        )
+        self.params_info["components_count"].config(text=str(params.get("NB", 0)))
         self.params_info["variants_count"].config(
             text=str(len(params.get("variants", [])))
         )
 
         # Директивы
-        active_directives = [
-            k for k, v in params.get("directives", {}).items() if v
-        ]
+        active_directives = [k for k, v in params.get("directives", {}).items() if v]
         directives_str = ", ".join(active_directives) if active_directives else "—"
         self.params_info["directives"].config(text=directives_str)
 
@@ -279,6 +323,125 @@ class ThermoApp:
             lbl = ttk.Label(list_frame, text="—", anchor="w")
             lbl.grid(row=0, column=0, sticky="w", padx=2, pady=1)
             self.params_info["components_labels"].append(lbl)
+
+    def _reset_params_display(self) -> None:
+        """
+        Сброс отображения параметров к начальным значениям.
+
+        Используется при загрузке результатов без параметров (например, из .res файлов).
+        """
+        self.current_params = None
+
+        # Сброс всех полей параметров
+        self.params_info["pk"].config(text="—")
+        self.params_info["pc"].config(text="—")
+        self.params_info["components_count"].config(text="—")
+        self.params_info["variants_count"].config(text="—")
+        self.params_info["directives"].config(text="—")
+
+        # Очистка списка компонентов
+        list_frame = self.params_info["components_list_frame"]
+        for widget in self.params_info.get("components_labels", []):
+            widget.destroy()
+        self.params_info["components_labels"] = []
+
+        # Пустая метка для компонентов
+        lbl = ttk.Label(list_frame, text="—", anchor="w")
+        lbl.grid(row=0, column=0, sticky="w", padx=2, pady=1)
+        self.params_info["components_labels"].append(lbl)
+
+        logger.info("Окно параметров сброшено")
+
+    def _show_startup_instructions(self) -> None:
+        """
+        Отображение инструкции по работе с приложением при запуске.
+        """
+        instructions = """
+╔═══════════════════════════════════════════════════════════════╗
+║              ДОБРО ПОЖАЛОВАТЬ В Pyro 1.2 (TERMO94)            ║
+╠═══════════════════════════════════════════════════════════════╣
+║  Порядок работы:                                              ║
+║                                                               ║
+║  1. 📝 Нажмите "Задать параметры" для настройки расчета       ║
+║     - Выберите компоненты из каталога                         ║
+║     - Укажите давления (PK, PC)                               ║
+║     - Добавьте вариации концентраций                          ║
+║                                                               ║
+║  2. ▶ Нажмите "Запуск расчета" для выполнения                 ║
+║     - Будет создан .PS файл и выполнен расчет                 ║
+║                                                               ║
+║  3. 📊 Результаты отобразятся в этом окне                     ║
+║                                                               ║
+║  4. 💾 Сохраните результаты в JSON или загрузите ранее        ║
+║     сохранённые данные через "Загрузить результаты"           ║
+║                                                               ║
+║  📂 Также можно загрузить готовые .res файлы                  ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
+        self.output_text.delete("1.0", "end")
+        self.output_text.insert("1.0", instructions)
+
+    def _show_help_window(self) -> None:
+        """
+        Создание окна с инструкцией по работе с приложением.
+        """
+        help_window = tk.Toplevel(self.root)
+        help_window.title("📖 Инструкция по работе с TERMO94")
+        help_window.geometry("700x550")
+        help_window.resizable(True, True)
+
+        # Текст инструкции
+        help_text_widget = tk.Text(help_window, font=("Consolas", 10), padx=15, pady=15)
+        help_text_widget.pack(fill="both", expand=True, padx=10, pady=10)
+
+        instructions = """
+╔═══════════════════════════════════════════════════════════════╗
+║              ДОБРО ПОЖАЛОВАТЬ В Pyro 1.2 (TERMO94)            ║
+╠═══════════════════════════════════════════════════════════════╣
+║  Порядок работы:                                              ║
+║                                                               ║
+║  1. 📝 Нажмите "Задать параметры" для настройки расчета       ║
+║     - Выберите компоненты из каталога                         ║
+║     - Укажите давления (PK, PC)                               ║
+║     - Добавьте вариации концентраций                          ║
+║                                                               ║
+║  2. ▶ Нажмите "Запуск расчета" для выполнения                 ║
+║     - Будет создан .PS файл и выполнен расчет                 ║
+║                                                               ║
+║  3. 📊 Результаты отобразятся в этом окне                     ║
+║                                                               ║
+║  4. 💾 Сохраните результаты в JSON или загрузите ранее        ║
+║     сохранённые данные через "Загрузить результаты"           ║
+║                                                               ║
+║  📂 Также можно загрузить готовые .res файлы                  ║
+╚═══════════════════════════════════════════════════════════════╝
+
+╔═══════════════════════════════════════════════════════════════╗
+║                    Кнопки управления                          ║
+╠═══════════════════════════════════════════════════════════════╣
+║  📝 Задать параметры  - Открыть диалог настройки расчета      ║
+║  ▶ Запуск расчета     - Выполнить термодинамический расчет   ║
+║  📊 Таблица результатов - Показать результаты в виде таблицы  ║
+║  📈 Построить график  - Визуализировать результаты            ║
+║  💾 Сохранить результаты - Экспорт в JSON файл                ║
+║  📂 Загрузить результаты - Импорт из JSON или .res файлов     ║
+║  ❓ Инструкция        - Показать эту справку                  ║
+╚═══════════════════════════════════════════════════════════════╝
+
+╔═══════════════════════════════════════════════════════════════╗
+║                    Форматы файлов                             ║
+╠═══════════════════════════════════════════════════════════════╣
+║  .json  - Результаты с параметрами расчета (рекомендуется)    ║
+║  .res   - Сырые результаты расчета TERMO94                    ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
+        help_text_widget.insert("1.0", instructions)
+        help_text_widget.configure(state="disabled")  # Только для чтения
+
+        # Кнопка закрытия
+        ttk.Button(help_window, text="Закрыть", command=help_window.destroy).pack(
+            pady=(0, 10)
+        )
 
     def _display_params_summary(self, params: dict) -> None:
         """
@@ -355,12 +518,15 @@ class ThermoApp:
                 PC=self.current_params.get("PC", 0.1),
                 AL=self.current_params.get("AL", 0),
                 N=self.current_params.get("N", 2),
-                NB=self.current_params.get("NB", len(self.current_params.get("variants", []))),
+                NB=self.current_params.get(
+                    "NB", len(self.current_params.get("variants", []))
+                ),
                 AL_N=self.current_params.get("AL_N", 0),
                 AL_NB=self.current_params.get("AL_NB", 0),
                 variants=self.current_params.get("variants", []),
                 components=self.current_params.get("components", []),
                 al_variants=self.current_params.get("al_variants", []),
+                outer_oxy=self.current_params.get("outer_oxy", []),
             )
         except ValueError as e:
             logger.error(f"Ошибка валидации параметров: {e}")
@@ -396,7 +562,7 @@ class ThermoApp:
             on_complete=on_complete,
         )
 
-    def _on_calc_complete(self, series) -> None:
+    def _on_calc_complete(self, series: ResultSeries) -> None:
         """
         Обработчик завершения серии расчетов.
 
@@ -413,7 +579,7 @@ class ThermoApp:
             # Сразу выводим результаты на главный экран
             self.output_text.delete("1.0", "end")
             self.output_text.insert("1.0", "=== РЕЗУЛЬТАТЫ РАСЧЕТА ===\n\n")
-            self.output_text.insert("end", f"✓ Серия расчетов завершена\n")
+            self.output_text.insert("end", "✓ Серия расчетов завершена\n")
             self.output_text.insert("end", f"✓ Получено результатов: {len(series)}\n\n")
 
             # Форматируем и выводим все результаты
@@ -497,24 +663,34 @@ class ThermoApp:
 
                 self.output_text.delete("1.0", "end")
                 self.output_text.insert("1.0", "=== ЗАГРУЖЕНО ИЗ .RES ФАЙЛОВ ===\n")
-                self.output_text.insert("end", f"✓ Загружено результатов: {len(series)}\n")
-                self.output_text.insert("end", f"✓ Файлов обработано: {len(filepaths)}\n")
-                
+                self.output_text.insert(
+                    "end", f"✓ Загружено результатов: {len(series)}\n"
+                )
+                self.output_text.insert(
+                    "end", f"✓ Файлов обработано: {len(filepaths)}\n"
+                )
+
                 if series.mixture_name:
                     self.output_text.insert("end", f"Смесь: {series.mixture_name}\n")
                 if series.mixture_density:
-                    self.output_text.insert("end", f"Плотность смеси: {series.mixture_density}\n")
-                
+                    self.output_text.insert(
+                        "end", f"Плотность смеси: {series.mixture_density}\n"
+                    )
+
                 self.output_text.insert("end", "\n")
-                
+
                 # Форматируем и выводим результаты последовательно
                 output = StringIO()
                 self._format_series_results(series, output)
                 result_text = output.getvalue()
                 self.output_text.insert("end", result_text)
-                
-                self.status_var.set(f"✓ Загружено {len(series)} результатов из {len(filepaths)} файлов")
-                logger.info(f"Загружено {len(series)} результатов из {len(filepaths)} .res файлов")
+
+                self.status_var.set(
+                    f"✓ Загружено {len(series)} результатов из {len(filepaths)} файлов"
+                )
+                logger.info(
+                    f"Загружено {len(series)} результатов из {len(filepaths)} .res файлов"
+                )
             else:
                 messagebox.showwarning(
                     "Внимание",
@@ -527,32 +703,153 @@ class ThermoApp:
             messagebox.showerror("Ошибка", f"Не удалось загрузить файлы:\n{e}")
             self.status_var.set("✗ Ошибка загрузки")
 
-    def _show_results(self) -> None:
-        """Показ результатов расчета."""
-        # Сначала пробуем показать результаты из последней серии
-        if hasattr(self, "last_series") and self.last_series and len(self.last_series) > 0:
-            self._show_series_table(self.last_series)
+    def _save_results(self) -> None:
+        """Сохранение результатов расчета в JSON файл."""
+        # Проверяем, есть ли серия результатов
+        if (
+            not hasattr(self, "last_series")
+            or not self.last_series
+            or len(self.last_series) == 0
+        ):
+            messagebox.showwarning(
+                "Внимание", "Нет результатов для сохранения.\nСначала выполните расчет."
+            )
             return
 
-        # Если нет серии, пробуем загрузить из файла
-        fn = self.fn_entry.get()
-        data = self._load_results(fn)
+        # Открываем диалог сохранения
+        from tkinter import filedialog
 
-        if not data:
+        filepath = filedialog.asksaveasfilename(
+            title="Сохранить результаты",
+            defaultextension=".json",
+            filetypes=[("JSON файлы", "*.json"), ("Все файлы", "*.*")],
+            initialfile=f"{self.fn_entry.get()}_results.json",
+        )
+
+        if not filepath:
             return
 
         try:
-            output = StringIO()
-            self._format_results(data, output)
-            result_text = output.getvalue()
+            # Сохраняем серию результатов
+            self.last_series.save_to_json(filepath)
+            self.status_var.set(f"✓ Результаты сохранены: {filepath}")
+            logger.info(f"Результаты сохранены в файл: {filepath}")
+            messagebox.showinfo("Успех", f"Результаты успешно сохранены:\n{filepath}")
+        except Exception as e:
+            logger.error(f"Ошибка сохранения результатов: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось сохранить результаты:\n{e}")
 
-            self.output_text.delete("1.0", "end")
-            self.output_text.insert("1.0", result_text)
-            self.status_var.set("✓ Результаты загружены")
+    def _load_res_json_results(self) -> None:
+        """Загрузка результатов из JSON или .res файлов."""
+        from pathlib import Path
+        from tkinter import filedialog
+
+        from models.results import ResultSeries
+
+        # Открываем диалог выбора файлов
+        filepaths = filedialog.askopenfilenames(
+            title="Выберите файлы с результатами",
+            filetypes=[
+                ("JSON файлы", "*.json"),
+                ("Res файлы", "*.res"),
+                ("Все файлы", "*.*"),
+            ],
+            initialdir=str(self.work_dir),
+        )
+
+        if not filepaths:
+            return
+
+        try:
+            from core.calc_organizer import Calculator
+
+            # Проверяем формат первого файла для выбора метода загрузки
+            first_file = Path(filepaths[0])
+            file_extension = first_file.suffix.lower()
+
+            if file_extension == ".json":
+                # Загружаем из JSON
+                file_type = "JSON"
+                series = ResultSeries.load_from_json(filepaths[0])
+            elif file_extension == ".res":
+                # Загружаем из .res файлов
+                file_type = "RES"
+                series = Calculator.load_series_from_res_files(
+                    res_files=list(filepaths),
+                    params=None,
+                    logger=logger,
+                    base_path=self.base_path,
+                )
+            else:
+                messagebox.showwarning(
+                    "Внимание",
+                    f"Неподдерживаемый формат файла: {file_extension}\nПоддерживаются .json и .res",
+                )
+                return
+            self.last_series = series
+            if len(series) > 0:
+                # Сохраняем серию для последующего отображения
+                self.last_series = series
+                params = series.params.to_dict() if series.params else None
+                if params:
+                    self._update_params_display(params)
+                else:
+                    self._reset_params_display()
+
+                self.output_text.delete("1.0", "end")
+                self.output_text.insert(
+                    "1.0", f"=== ЗАГРУЖЕНО ИЗ {file_type} ФАЙЛА ===\n"
+                )
+                self.output_text.insert(
+                    "end", f"✓ Загружено результатов: {len(series)}\n"
+                )
+
+                if series.mixture_name:
+                    self.output_text.insert("end", f"Смесь: {series.mixture_name}\n")
+                if series.mixture_density:
+                    self.output_text.insert(
+                        "end", f"Плотность смеси: {series.mixture_density}\n"
+                    )
+
+                self.output_text.insert("end", "\n")
+
+                # Форматируем и выводим результаты
+                output = StringIO()
+                self._format_series_results(series, output)
+                result_text = output.getvalue()
+                self.output_text.insert("end", result_text)
+
+                self.status_var.set(
+                    f"✓ Загружено {len(series)} результатов из {file_type}"
+                )
+                logger.info(f"Загружено {len(series)} результатов из {file_type} файла")
+            else:
+                messagebox.showwarning(
+                    "Внимание",
+                    "Не удалось загрузить результаты из файла",
+                )
+                self.status_var.set("✗ Ошибка загрузки результатов")
 
         except Exception as e:
-            logger.error(f"Ошибка форматирования результатов: {e}")
-            self._show_raw_results(fn)
+            logger.error(f"Ошибка загрузки {file_type} файла: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось загрузить файл:\n{e}")
+            self.status_var.set("✗ Ошибка загрузки")
+
+    def _show_results(self) -> None:
+        """Показ результатов расчета."""
+        # Сначала пробуем показать результаты из последней серии
+        if (
+            hasattr(self, "last_series")
+            and self.last_series
+            and len(self.last_series) > 0
+        ):
+            self._show_series_table(self.last_series)
+            return
+        else:
+            messagebox.showwarning(
+                "Внимание",
+                "Сначала выполните расчет или загрузите результат",
+            )
 
     def _show_series_table(self, series) -> None:
         """
@@ -606,7 +903,9 @@ class ThermoApp:
 
         # Добавляем скроллы
         v_scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
-        h_scrollbar = ttk.Scrollbar(table_frame, orient="horizontal", command=tree.xview)
+        h_scrollbar = ttk.Scrollbar(
+            table_frame, orient="horizontal", command=tree.xview
+        )
         tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
 
         v_scrollbar.pack(side="right", fill="y")
@@ -620,7 +919,7 @@ class ThermoApp:
                 conc_str = ", ".join([f"{c:.1f}" for c in result.composition_percent])
             else:
                 conc_str = "—"
-            
+
             tree.insert(
                 "",
                 "end",
@@ -657,8 +956,8 @@ class ThermoApp:
 
         def on_export_csv():
             """Экспорт результатов в CSV."""
-            from tkinter import filedialog
             import csv
+            from tkinter import filedialog
 
             file_path = filedialog.asksaveasfilename(
                 defaultextension=".csv",
@@ -715,7 +1014,9 @@ class ThermoApp:
         ttk.Button(btn_frame, text="💾 Экспорт CSV", command=on_export_csv).pack(
             side="left", padx=5
         )
-        ttk.Button(btn_frame, text="Закрыть", command=on_close).pack(side="right", padx=5)
+        ttk.Button(btn_frame, text="Закрыть", command=on_close).pack(
+            side="right", padx=5
+        )
 
         # Статус
         status_label = ttk.Label(
@@ -740,7 +1041,9 @@ class ThermoApp:
         details_window.title(f"Расчет #{result.id}")
         details_window.geometry("700x500")
 
-        text_widget = tk.Text(details_window, height=30, width=80, font=("Consolas", 10))
+        text_widget = tk.Text(
+            details_window, height=30, width=80, font=("Consolas", 10)
+        )
         text_widget.pack(fill="both", expand=True, padx=10, pady=10)
 
         # Форматируем детали
@@ -769,7 +1072,9 @@ class ThermoApp:
         if result.equilibrium_gas:
             output.write("\nРавновесный состав газовой фазы (топ-30):\n")
             output.write("-" * 40 + "\n")
-            sorted_gas = sorted(result.equilibrium_gas.items(), key=lambda x: -x[1])[:30]
+            sorted_gas = sorted(result.equilibrium_gas.items(), key=lambda x: -x[1])[
+                :30
+            ]
             for comp, value in sorted_gas:
                 output.write(f"  {comp}: {value:.6e}\n")
 
@@ -830,7 +1135,7 @@ class ThermoApp:
             for calc in data.calculations:
                 self._format_single_calculation(calc, output)
 
-    def _format_series_results(self, series, output: StringIO) -> None:
+    def _format_series_results(self, series: ResultSeries, output: StringIO) -> None:
         """
         Форматирование серии результатов для вывода в текстовое поле.
 
@@ -866,13 +1171,13 @@ class ThermoApp:
     def _format_value(self, value: float, use_decimal: bool = False) -> str:
         """
         Форматирование числового значения.
-        
+
         Преобразует числа из экспоненциальной записи в обычный формат.
-        
+
         Args:
             value: Числовое значение.
             use_decimal: Если True, использовать десятичный формат, иначе - экспоненциальный.
-        
+
         Returns:
             Отформатированная строка.
         """
@@ -883,7 +1188,7 @@ class ThermoApp:
                 if value == int(value):
                     return f"{int(value)}"
                 else:
-                    return f"{value:.6f}".rstrip('0').rstrip('.')
+                    return f"{value:.6f}".rstrip("0").rstrip(".")
             else:
                 # Для очень больших/малых чисел используем экспоненциальный формат
                 return f"{value:.6e}"
@@ -960,49 +1265,20 @@ class ThermoApp:
     def _show_plots(self) -> None:
         """Показ графиков результатов."""
         # Сначала пробуем показать графики из последней серии
-        if hasattr(self, "last_series") and self.last_series and len(self.last_series) > 0:
+        if (
+            hasattr(self, "last_series")
+            and self.last_series
+            and len(self.last_series) > 0
+        ):
             self._show_series_plots(self.last_series)
             return
+        else:
+            messagebox.showwarning(
+                "Внимание",
+                "Сначала выполните расчет или загрузите результат",
+            )
 
-        # Если нет серии, пробуем загрузить из файла
-        fn = self.fn_entry.get()
-        data = self._load_results(fn)
-
-        if not data:
-            return
-
-        try:
-            if not data.calculations:
-                messagebox.showinfo(
-                    "Информация",
-                    "В файле результатов нет расчётов для построения графика",
-                )
-                return
-
-            variants = []
-            if self.current_params and "variants" in self.current_params:
-                variants = self.current_params["variants"].copy()
-                if "components" in self.current_params:
-                    component_names = [
-                        comp.get("name", f"Компонент {i + 1}")
-                        for i, comp in enumerate(self.current_params["components"])
-                    ]
-                    for variant in variants:
-                        variant["component_names"] = component_names
-
-            from gui.plotter import ResultsPlotter
-
-            plotter = ResultsPlotter(self.root, [data], variants)
-            plotter.show_plot_dialog()
-
-            self.status_var.set("✓ Графики построены")
-            logger.info("Графики построены")
-
-        except Exception as e:
-            logger.error(f"Ошибка построения графиков: {e}")
-            messagebox.showerror("Ошибка", f"Не удалось построить графики:\n{e}")
-
-    def _show_series_plots(self, series) -> None:
+    def _show_series_plots(self, series: ResultSeries) -> None:
         """
         Показ графиков для серии результатов.
 
@@ -1034,10 +1310,12 @@ class ThermoApp:
             if series.results and series.results[0].composition_percent:
                 # Создаем вариации на основе концентраций из результатов
                 for i, result in enumerate(series.results):
-                    variants.append({
-                        "id": result.id,
-                        "concentrations": result.composition_percent,
-                    })
+                    variants.append(
+                        {
+                            "id": result.id,
+                            "concentrations": result.composition_percent,
+                        }
+                    )
             elif self.current_params and "variants" in self.current_params:
                 variants = self.current_params["variants"].copy()
                 if "components" in self.current_params:
@@ -1059,59 +1337,6 @@ class ThermoApp:
         except Exception as e:
             logger.error(f"Ошибка построения графиков для серии: {e}")
             messagebox.showerror("Ошибка", f"Не удалось построить графики:\n{e}")
-
-    def _run_optimization(self) -> None:
-        """Запуск оптимизации состава."""
-        if not self.current_params:
-            messagebox.showwarning("Внимание", "Сначала задайте параметры!")
-            return
-
-        if not self.current_params.get("components"):
-            messagebox.showwarning("Внимание", "Нет компонентов для оптимизации!")
-            return
-
-        component_names = [
-            comp.get("name", f"Компонент {i + 1}")
-            for i, comp in enumerate(self.current_params["components"])
-        ]
-
-        if len(component_names) < 2:
-            messagebox.showwarning(
-                "Внимание", "Для оптимизации нужно минимум 2 компонента!"
-            )
-            return
-
-        from gui.optimization_dialog import show_optimization_dialog
-
-        result = show_optimization_dialog(self, component_names, self.current_params)
-
-        if result:
-            self._apply_optimization_result(result)
-
-    def _apply_optimization_result(self, result: dict) -> None:
-        """
-        Применение результатов оптимизации.
-
-        Args:
-            result: Словарь с результатами оптимизации.
-        """
-        if not self.current_params:
-            return
-
-        if (
-            "variants" in self.current_params
-            and len(self.current_params["variants"]) > 0
-        ):
-            self.current_params["variants"][0]["concentrations"] = result[
-                "concentrations"
-            ]
-
-        self.output_text.insert("end", "\n=== РЕЗУЛЬТАТ ОПТИМИЗАЦИИ ===\n")
-        self.output_text.insert("end", f"Лучшее значение: {result['best_value']:.4f}\n")
-        self.output_text.insert("end", f"Концентрации: {result['concentrations']}\n")
-
-        self.status_var.set("✓ Результаты оптимизации применены")
-        logger.info(f"Оптимизация применена: {result['best_value']:.4f}")
 
 
 if __name__ == "__main__":

@@ -145,7 +145,7 @@ class PSGenerator:
         """Запись параметров внешнего окислителя."""
         f.write(f"N={params['AL_N']}  NB={params['AL_NB']}\n")
 
-        for variant in params["AL_variants"]:
+        for variant in params["al_variants"]:
             concentrations = ",".join(
                 [self._format_conc(x) for x in variant["concentrations"]]
             )

@@ -2,9 +2,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 
-from models.component import Component
-
 from core.catalog_manager import CatalogManager
+from models.component import Component
 
 
 class ComponentSearchDialog:

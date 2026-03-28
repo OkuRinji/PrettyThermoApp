@@ -7,16 +7,14 @@
 
 import logging
 from pathlib import Path
+from tkinter import messagebox
 from typing import Callable, Optional
 
-from tkinter import messagebox
-
-from core.runner import OTVDMMRunner
 from core.ps_generator import PSGenerator
 from core.res_parser import ResParser
-from models.results import ResultSeries, Result
-from models.res_component import ResComponent
+from core.runner import OTVDMMRunner
 from models.params import Params
+from models.results import Result, ResultSeries
 
 
 class ChunkSplitter:
@@ -345,7 +343,9 @@ class Calculator:
         """
         if self._current_chunk_index >= len(self._ps_file_list):
             # Все чанки обработаны
-            self.logger.info(f"Асинхронная серия завершена. Результатов: {len(self.series)}")
+            self.logger.info(
+                f"Асинхронная серия завершена. Результатов: {len(self.series)}"
+            )
             if on_complete:
                 on_complete(self.series)
             return
@@ -476,7 +476,9 @@ class Calculator:
                 for calc in data.calculations:
                     series.add_result(calc)
 
-                logger.info(f"Загружено {len(data.calculations)} результатов из {path.name}")
+                logger.info(
+                    f"Загружено {len(data.calculations)} результатов из {path.name}"
+                )
 
             except Exception as e:
                 logger.error(f"Ошибка загрузки из {res_path}: {e}")

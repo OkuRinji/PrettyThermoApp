@@ -88,16 +88,14 @@ class ParamsDialog:
         dir_header_frame.pack(fill="x", padx=10, pady=(10, 0))
 
         ttk.Label(
-            dir_header_frame,
-            text="⚙️ Директивы",
-            font=("TkDefaultFont", 10, "bold")
+            dir_header_frame, text="⚙️ Директивы", font=("TkDefaultFont", 10, "bold")
         ).pack(side="left")
 
         self.toggle_btn = ttk.Button(
             dir_header_frame,
             text="▶ Развернуть",
             command=self._toggle_directives,
-            width=12
+            width=12,
         )
         self.toggle_btn.pack(side="left", padx=10)
 
@@ -120,7 +118,9 @@ class ParamsDialog:
         for i, (code, desc) in enumerate(directives_list):
             var = tk.BooleanVar(value=False)
             self.directive_vars[code] = var
-            cb = ttk.Checkbutton(self.directives_frame, text=f"{code} - {desc}", variable=var)
+            cb = ttk.Checkbutton(
+                self.directives_frame, text=f"{code} - {desc}", variable=var
+            )
             cb.grid(row=i // 2, column=i % 2, sticky="w", pady=1)
 
         # === Секция 2: Параметры процесса ===
@@ -185,7 +185,9 @@ class ParamsDialog:
         self.components_frame.pack(fill="x", pady=5)
 
         # Сетка вариаций (нижняя часть с прокруткой и рамкой)
-        variants_label_frame = ttk.LabelFrame(recipe_frame, text="📊 Вариации концентраций", padding=5)
+        variants_label_frame = ttk.LabelFrame(
+            recipe_frame, text="📊 Вариации концентраций", padding=5
+        )
         variants_label_frame.pack(fill="both", expand=True, pady=5)
 
         # Создаём Canvas с прокруткой для вариаций внутри LabelFrame
@@ -209,19 +211,6 @@ class ParamsDialog:
 
         self.variants_canvas.pack(side="left", fill="both", expand=True)
         self.variants_scrollbar.pack(side="right", fill="y")
-
-        # Прокрутка колесиком для вариаций
-        def _on_variants_mousewheel(event):
-            self.variants_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        self.variants_canvas.bind_all("<MouseWheel>", _on_variants_mousewheel)
-
-        # Отписка при закрытии
-        def _on_closing_dialog():
-            self.variants_canvas.unbind_all("<MouseWheel>")
-            self.dialog.destroy()
-
-        self.dialog.protocol("WM_DELETE_WINDOW", _on_closing_dialog)
 
         self._create_components_grid()
 
@@ -350,7 +339,9 @@ class ParamsDialog:
             self.create_signle_comp_line(comp_idx, nb, start, is_oxy=False)
 
         # Затем внешний окислитель (если есть)
-        if self.al_entry.get() != "0":
+        al_value = self.al_entry.get().strip()
+        has_outer_oxy = al_value and float(al_value) != 0 if al_value else False
+        if has_outer_oxy:
             ttk.Label(
                 self.components_frame,
                 text="Внешний окислитель",
@@ -415,9 +406,7 @@ class ParamsDialog:
                 self.conc_entries[-1].append(conc_entry)
 
         # Обновляем область прокрутки главного canvas после создания всех элементов
-        self.main_canvas.configure(
-            scrollregion=self.main_canvas.bbox("all")
-        )
+        self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
 
     def _make_series_dialog(self):
         """Создаёт диалоговое окно для построения серии расчётов"""
@@ -500,14 +489,14 @@ class ParamsDialog:
         )
         self.start_conc_1_entry = ttk.Entry(self.conc_container, width=10)
         self.start_conc_1_entry.grid(row=1, column=1, padx=3, pady=3, sticky="w")
-        self.start_conc_1_entry.insert(0, "0")
+        self.start_conc_1_entry.insert(0, "1")
 
         ttk.Label(self.conc_container, text="Конечная концентрация (%):").grid(
             row=2, column=0, padx=3, pady=3, sticky="e"
         )
         self.end_conc_1_entry = ttk.Entry(self.conc_container, width=10)
         self.end_conc_1_entry.grid(row=2, column=1, padx=3, pady=3, sticky="w")
-        self.end_conc_1_entry.insert(0, "100")
+        self.end_conc_1_entry.insert(0, "99")
 
         # Начальные концентрации для остальных компонентов
         ttk.Separator(self.conc_container, orient="horizontal").grid(
@@ -794,8 +783,8 @@ class ParamsDialog:
         """Обновляет сетку компонентов и вариаций, сохраняя введенные данные"""
         # Определяем, есть ли внешний окислитель
         al_value = self.al_entry.get().strip() if hasattr(self, "al_entry") else "0"
-        has_outer_oxy = al_value != "0"
-        
+        has_outer_oxy = al_value and float(al_value) != 0 if al_value else False
+
         # Сохраняем текущие значения основных компонентов
         saved_components = []
         for i in range(len(self.id_entries)):
@@ -853,9 +842,7 @@ class ParamsDialog:
         self._update_variants_labels()
 
         # Обновляем область прокрутки главного canvas
-        self.main_canvas.configure(
-            scrollregion=self.main_canvas.bbox("all")
-        )
+        self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
 
     def _update_variants_labels(self):
         """Обновляет названия компонентов в сетке вариаций"""
@@ -898,17 +885,27 @@ class ParamsDialog:
         for code, var in self.directive_vars.items():
             var.set(params.get("directives", {}).get(code, False))
 
-        # Параметры процесса
+        # Параметры процесса - очищаем перед вставкой
+        self.pk_entry.delete(0, "end")
         self.pk_entry.insert(0, str(params.get("PK", 0.1)))
+        self.pc_entry.delete(0, "end")
         self.pc_entry.insert(0, str(params.get("PC", 0.1)))
 
-        # Рецептура
+        # AL - устанавливаем ДО создания сетки компонентов
+        al_value = params.get("AL", 0)
+        self.al_entry.delete(0, "end")
+        self.al_entry.insert(0, str(al_value))
+
+        # Рецептура - очищаем перед вставкой
+        self.nb_entry.delete(0, "end")
         self.nb_entry.insert(0, str(params.get("NB", 2)))
+        self.var_entry.delete(0, "end")
         self.var_entry.insert(0, str(params.get("N", 1)))
         self._create_components_grid()
 
         # Компоненты
         components = params.get("components", [])
+        # Поддержка обоих вариантов написания ключа (outer_oxy и outer_oxy)
         outer_oxy = params.get("outer_oxy", [])
 
         # Сначала загружаем основные компоненты
@@ -1004,15 +1001,17 @@ class ParamsDialog:
             # Находим proc_frame среди дочерних виджетов scrollable_frame
             proc_frame = None
             for widget in self.directives_frame.master.winfo_children():
-                if isinstance(widget, ttk.LabelFrame) and "Параметры процесса" in widget.cget("text"):
+                if isinstance(
+                    widget, ttk.LabelFrame
+                ) and "Параметры процесса" in widget.cget("text"):
                     proc_frame = widget
                     break
-            
+
             if proc_frame:
                 self.directives_frame.pack(fill="x", padx=10, pady=5, before=proc_frame)
             else:
                 self.directives_frame.pack(fill="x", padx=10, pady=5)
-            
+
             self.toggle_btn.config(text="▼ Свернуть")
             self.directives_expanded.set(True)
             self._directives_packed = True
@@ -1182,7 +1181,7 @@ class ParamsDialog:
         # === Проверка концентраций ===
         for var_idx, var_entries in enumerate(self.conc_entries):
             concentrations = []
-            for entry in var_entries:
+            for comp_idx, entry in enumerate(var_entries):
                 val_str = entry.get().strip()
                 if val_str:
                     try:
@@ -1192,6 +1191,16 @@ class ParamsDialog:
                                 f"В вариации № {var_idx + 1}: отрицательная концентрация"
                             )
                             error_widgets.append((entry, "Отрицательная"))
+                        elif val == 0:
+                            errors.append(
+                                f"В вариации № {var_idx + 1}, компонент {comp_idx + 1}: концентрация не может быть 0%"
+                            )
+                            error_widgets.append((entry, "0%"))
+                        elif val == 100:
+                            errors.append(
+                                f"В вариации № {var_idx + 1}, компонент {comp_idx + 1}: концентрация не может быть 100%"
+                            )
+                            error_widgets.append((entry, "100%"))
                         concentrations.append(val)
                     except ValueError:
                         errors.append("Концентрация должна быть числом")
@@ -1217,6 +1226,9 @@ class ParamsDialog:
 
     def _on_ok(self):
         """Собирает данные, валидирует через Params и закрывает окно"""
+        # Принудительно обновляем сетку перед сбором данных (на случай если AL изменили только что)
+        self._update_components_grid()
+
         # Сначала валидация
         is_valid, error_msg, error_widgets = self._validate_params()
         if not is_valid:
@@ -1290,8 +1302,15 @@ class ParamsDialog:
 
             self.result = params_obj.to_dict()
 
+            # Добавляем AL_variants с большой буквы для ps_generator
+            self.result["AL_variants"] = al_variants
+
             # Добавляем outer_oxy если есть внешний окислитель
-            if al_value != 0 and len(self.oxy_id_entries) > 0:
+            if al_value != 0:
+                # Проверяем, что окислитель выбран
+                if not hasattr(self, "oxy_id_entries") or len(self.oxy_id_entries) == 0:
+                    raise ValueError("Не выбран внешний окислитель")
+
                 comp_id = int(self.oxy_id_entries[0].cget("text").strip() or 0)
                 formula = self.oxy_formula_entries[0].cget("text").strip()
                 enthalpy_str = self.oxy_enthalpy_entries[0].cget("text").strip()

@@ -33,6 +33,10 @@ def _default_al_variants() -> list:
     return [{"id": 1, "concentrations": [100.0]}]
 
 
+def _default_outer_oxy() -> list:
+    return []
+
+
 @dataclass
 class Params:
     """
@@ -51,6 +55,7 @@ class Params:
         NB: Количество вариаций.
         AL_N: Количество внешних окислителей.
         AL_NB: Количество вариаций внешних окислителей.
+        outer_oxy: Список компонентов внешнего окислителя.
 
     Raises:
         ValueError: При некорректных значениях полей.
@@ -69,6 +74,7 @@ class Params:
     variants: list[dict[str, Any]] = field(default_factory=_default_variants)
     components: list[dict[str, Any]] = field(default_factory=_default_components)
     al_variants: list[dict[str, Any]] = field(default_factory=_default_al_variants)
+    outer_oxy: list[dict[str, Any]] = field(default_factory=_default_outer_oxy)
 
     def __post_init__(self) -> None:
         """
@@ -178,4 +184,5 @@ class Params:
             "variants": self.variants,
             "components": self.components,
             "al_variants": self.al_variants,
+            "outer_oxy": self.outer_oxy,
         }

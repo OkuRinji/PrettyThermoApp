@@ -4,8 +4,10 @@
 Определяет класс Result для представления результатов расчёта горения смеси.
 """
 
+import json
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from models.res_component import ResComponent
@@ -274,4 +276,74 @@ class ResultSeries:
     def __iter__(self):
         """Итератор по результатам."""
         return iter(self.results)
-    
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Преобразование серии результатов в словарь.
+
+        Returns:
+            Словарь с данными серии.
+        """
+
+        return {
+            "results": [r.to_dict() for r in self.results],
+            "mixture_name": self.mixture_name,
+            "mixture_density": self.mixture_density,
+            "element_composition": self.element_composition,
+            "components": [c.to_dict() for c in self.components],
+            "params": self.params.to_dict() if self.params else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ResultSeries":
+        """
+        Создание серии результатов из словаря.
+
+        Args:
+            data: Словарь с данными.
+
+        Returns:
+            Экземпляр ResultSeries.
+        """
+        from models.params import Params
+        from models.res_component import ResComponent
+
+        series = cls()
+        series.results = [Result(**r) for r in data.get("results", [])]
+        series.mixture_name = data.get("mixture_name", "")
+        series.mixture_density = data.get("mixture_density", 0.0)
+        series.element_composition = data.get("element_composition", {})
+        series.components = [
+            ResComponent.from_dict(c) for c in data.get("components", [])
+        ]
+        params_data = data.get("params")
+        if params_data:
+            series.params = Params(**params_data)
+        return series
+
+    def save_to_json(self, filepath: str | Path) -> None:
+        """
+        Сохранение серии результатов в JSON файл.
+
+        Args:
+            filepath: Путь к файлу для сохранения.
+        """
+        filepath = Path(filepath)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def load_from_json(cls, filepath: str | Path) -> "ResultSeries":
+        """
+        Загрузка серии результатов из JSON файла.
+
+        Args:
+            filepath: Путь к файлу для загрузки.
+
+        Returns:
+            Экземпляр ResultSeries.
+        """
+        filepath = Path(filepath)
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_dict(data)
