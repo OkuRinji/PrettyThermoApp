@@ -106,7 +106,7 @@ class ParamsDialog:
 
         self.directive_vars = {}
         directives_list = [
-            ("LDY", "Плотность"),
+            ("LDY", "Расчет генератора(двигателя)"),
             ("LNN", "Концентрации в молях на 1 кг"),
             ("TABL", "Оформление в виде таблицы"),
             ("LVM", "Концентрации: газ-объем%, конд-масса%"),
@@ -135,7 +135,7 @@ class ParamsDialog:
         self.pk_entry = ttk.Entry(proc_frame, width=15)
         self.pk_entry.grid(row=0, column=1, padx=5, pady=2)
         self.pk_entry.bind("<FocusIn>", self._on_focus_in)
-
+        
         ttk.Label(proc_frame, text="PC - Давление на срезе (МПа):").grid(
             row=0, column=2, sticky="w", pady=2
         )
@@ -167,6 +167,9 @@ class ParamsDialog:
         self.nb_entry.pack(side="left", padx=5)
         self.nb_entry.bind("<KeyRelease>", lambda e: self._on_nb_changed())
         self.nb_entry.bind("<FocusIn>", self._on_focus_in)
+
+        self.nb_add_button = ttk.Button(count_frame, text="+",command=self._add_one_comp).pack(side="left", padx=3)
+      
 
         ttk.Label(count_frame, text="Количество вариаций (Vars):").pack(
             side="left", padx=5
@@ -865,6 +868,12 @@ class ParamsDialog:
                 for widget in self.variants_frame.grid_slaves(row=row, column=1):
                     if isinstance(widget, ttk.Label):
                         widget.config(text=comp_name, anchor="w", width=30)
+    
+    def _add_one_comp(self):
+        curr_val = int(self.nb_entry.get())
+        self.nb_entry.delete(0, "end")
+        self.nb_entry.insert(0,curr_val+1)
+        self._on_nb_changed()
 
     def _on_nb_changed(self):
         """Отслеживает изменения количества компонентов и обновляет сетку"""

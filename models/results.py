@@ -51,19 +51,20 @@ class Result:
     Raises:
         ValueError: При некорректных значениях полей.
     """
-
+    
     id: int = field(default=1)
+    res_type: str = field(default="Горение без расширения") 
     composition_percent: list[float] = field(default_factory=_default_composition)
-    pressure: float = field(default=0.0)
-    temperature: float = field(default=0.0)
-    enthalpy: float = field(default=0.0)
-    entropy: float = field(default=0.0)
-    heat_capacity: float = field(default=0.0)
-    density: float = field(default=0.0)
-    molar_mass: float = field(default=0.0)
-    adiabatic_index: float = field(default=0.0)
-    volume_gas: float = field(default=0.0)
-    condensed_fraction: float = field(default=0.0)
+    pressure: list = field(default=0.0)
+    temperature: list = field(default=0.0)
+    enthalpy: list = field(default=0.0)
+    entropy: list = field(default=0.0)
+    heat_capacity: list = field(default=0.0)
+    density: list = field(default=0.0)
+    molar_mass: list = field(default=0.0)
+    adiabatic_index: list = field(default=0.0)
+    volume_gas: list = field(default=0.0)
+    condensed_fraction: list = field(default=0.0)
     equilibrium_gas: dict[str, float] = field(default_factory=_default_equilibrium_gas)
     equilibrium_condensed: dict[str, float] = field(
         default_factory=_default_equilibrium_condensed
@@ -324,13 +325,16 @@ class ResultSeries:
     def save_to_json(self, filepath: str | Path) -> None:
         """
         Сохранение серии результатов в JSON файл.
-
         Args:
             filepath: Путь к файлу для сохранения.
         """
         filepath = Path(filepath)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
+    def save_to_text(self,filepath: str| Path):
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(str(self.to_dict))
+        
 
     @classmethod
     def load_from_json(cls, filepath: str | Path) -> "ResultSeries":

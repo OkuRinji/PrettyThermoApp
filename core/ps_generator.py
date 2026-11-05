@@ -112,6 +112,8 @@ class PSGenerator:
                 parts.append(f"{key}={'T' if value else 'F'}")
             else:
                 parts.append(f"{key}={value}")
+        if directives["LDY"] == True:
+            parts.append("S0=0.")
 
         directive_line = " &RRP " + ",".join(parts) + " /&END\n"
         f.write(directive_line)

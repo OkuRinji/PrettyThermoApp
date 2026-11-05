@@ -101,7 +101,7 @@ class ThermoApp:
 
         # Заголовок
         ttk.Label(
-            control_frame, text="Pyro 1.2", font=("TkDefaultFont", 12, "bold")
+            control_frame, text="ModernTermo", font=("TkDefaultFont", 12, "bold")
         ).pack(pady=(0, 15))
 
         # Кнопки управления
@@ -131,6 +131,12 @@ class ThermoApp:
             control_frame,
             text="💾 Сохранить результаты",
             command=self._save_results,
+            width=20,
+        ).pack(pady=5, fill="x")
+        ttk.Button(
+            control_frame,
+            text="Скопировать результаты",
+            command=self._copy_results,
             width=20,
         ).pack(pady=5, fill="x")
         ttk.Button(
@@ -358,7 +364,7 @@ class ThermoApp:
         """
         instructions = """
 ╔═══════════════════════════════════════════════════════════════╗
-║              ДОБРО ПОЖАЛОВАТЬ В Pyro 1.2 (TERMO94)            ║
+║              ДОБРО ПОЖАЛОВАТЬ В ModernTermo (TERMO94)         ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  Порядок работы:                                              ║
 ║                                                               ║
@@ -396,7 +402,7 @@ class ThermoApp:
 
         instructions = """
 ╔═══════════════════════════════════════════════════════════════╗
-║              ДОБРО ПОЖАЛОВАТЬ В Pyro 1.2 (TERMO94)            ║
+║              ДОБРО ПОЖАЛОВАТЬ В ModerTermo (TERMO94)            ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  Порядок работы:                                              ║
 ║                                                               ║
@@ -703,6 +709,13 @@ class ThermoApp:
             messagebox.showerror("Ошибка", f"Не удалось загрузить файлы:\n{e}")
             self.status_var.set("✗ Ошибка загрузки")
 
+    def _copy_results(self) -> None:
+
+        results=self.output_text.get(0.0)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(results)
+        self.root.update()
+        
     def _save_results(self) -> None:
         """Сохранение результатов расчета в JSON файл."""
         # Проверяем, есть ли серия результатов
@@ -721,9 +734,8 @@ class ThermoApp:
 
         filepath = filedialog.asksaveasfilename(
             title="Сохранить результаты",
-            defaultextension=".json",
-            filetypes=[("JSON файлы", "*.json"), ("Все файлы", "*.*")],
-            initialfile=f"{self.fn_entry.get()}_results.json",
+            defaultextension=".result",
+            filetypes=[("Текстовый файл", "*.result"), ("Все файлы", "*.*")],
         )
 
         if not filepath:
@@ -731,7 +743,9 @@ class ThermoApp:
 
         try:
             # Сохраняем серию результатов
-            self.last_series.save_to_json(filepath)
+            with open(filepath, "w", encoding="utf-8")  as f :
+                f.write(self.output_text.get("1.0",tk.END))
+            self.last_series.save_to_json(filepath.replace(".result",".json"))
             self.status_var.set(f"✓ Результаты сохранены: {filepath}")
             logger.info(f"Результаты сохранены в файл: {filepath}")
             messagebox.showinfo("Успех", f"Результаты успешно сохранены:\n{filepath}")
@@ -1182,7 +1196,7 @@ class ThermoApp:
             Отформатированная строка.
         """
         if use_decimal:
-            # Для значений в диапазоне от 0.001 до 9999999 используем обычный формат
+                # Для значений в диапазоне от 0.001 до 9999999 используем обычный формат
             if 0.001 <= abs(value) < 10000000:
                 # Округляем до разумного количества знаков
                 if value == int(value):
