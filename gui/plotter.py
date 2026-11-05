@@ -88,7 +88,7 @@ class ResultsPlotter:
 
         # Подписи параметров
         self.param_labels = {
-            "temperature": "Температура (K)",
+            "temperature": "Температура (K) ",
             "enthalpy": "Энтальпия (кДж/кг)",
             "entropy": "Энтропия",
             "density": "Плотность (кг/м³)",
@@ -340,11 +340,11 @@ class ResultsPlotter:
         color_idx = 0
         for param in params:
             y_values = []
-
+            n=0
             for calc in self.res_data_list[0].calculations:
                 value = getattr(calc, param, 0)
+                
                 y_values.append(value if value else 0)
-
             units = {
                 "temperature": "K",
                 "enthalpy": "кДж/кг",
@@ -355,15 +355,21 @@ class ResultsPlotter:
                 "volume_gas": "м³/кг",
                 "condensed_fraction": "",
             }
-
-            data[param] = PlotData(
-                name=self.param_labels[param],
-                x_values=x_values,
-                y_values=y_values,
-                unit=units.get(param, ""),
-                color=self.colors[color_idx % len(self.colors)],
-            )
-            color_idx += 1
+            p_list = getattr(calc,"pressure",0)
+            
+            for i in range(len(y_values[0])):
+                                
+                name = self.param_labels[param]+f"  при  P{i+1} = {p_list[i]}" 
+                new_param = param + str(i)
+                data[new_param] = PlotData(
+                    name= name,
+                    x_values=x_values,
+                    y_values=[y_values[k][i] for k in range(len(y_values))],
+                    unit=units.get(param, ""),
+                    color=self.colors[color_idx % len(self.colors)]
+                )
+                color_idx += 1
+            n+=1
 
         return data
 
