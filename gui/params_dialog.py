@@ -82,7 +82,7 @@ class ParamsDialog:
         self.dialog.protocol("WM_DELETE_WINDOW", _on_closing)
 
         # === Секция 1: Директивы ===
-        self.directives_expanded = tk.BooleanVar(value=False)  # По умолчанию свернуто
+        self.directives_expanded = tk.BooleanVar(value=True)  # По умолчанию свернуто
 
         dir_header_frame = ttk.Frame(scrollable_frame)
         dir_header_frame.pack(fill="x", padx=10, pady=(10, 0))
@@ -91,13 +91,13 @@ class ParamsDialog:
             dir_header_frame, text="⚙️ Директивы", font=("TkDefaultFont", 10, "bold")
         ).pack(side="left")
 
-        self.toggle_btn = ttk.Button(
-            dir_header_frame,
-            text="▶ Развернуть",
-            command=self._toggle_directives,
-            width=12,
-        )
-        self.toggle_btn.pack(side="left", padx=10)
+        # self.toggle_btn = ttk.Button(
+        #     dir_header_frame,
+        #     text="▶ Развернуть",
+        #     command=self._toggle_directives,
+        #     width=12,
+        # )
+        # self.toggle_btn.pack(side="left", padx=10)
 
         # Контейнер для директив (сворачиваемый)
         self.directives_frame = ttk.Frame(scrollable_frame)
@@ -106,22 +106,24 @@ class ParamsDialog:
 
         self.directive_vars = {}
         directives_list = [
-            ("LDY", "Расчет генератора(двигателя)"),
-            ("LNN", "Концентрации в молях на 1 кг"),
-            ("TABL", "Оформление в виде таблицы"),
-            ("LVM", "Концентрации: газ-объем%, конд-масса%"),
-            ("WPS", "Генерация PS-файла"),
-            ("LMM", "Концентрации в массовых долях"),
+            ("LDY", "Расчет генератора(двигателя)")
+            # ("LNN", "Концентрации в молях на 1 кг"),
+            # ("TABL", "Оформление в виде таблицы"),
+            # ("LVM", "Концентрации: газ-объем%, конд-масса%"),
+            # ("WPS", "Генерация PS-файла"),
+            # ("LMM", "Концентрации в массовых долях"),
         ]
 
         # Создаем виджеты директив внутри сворачиваемого контейнера
         for i, (code, desc) in enumerate(directives_list):
             var = tk.BooleanVar(value=False)
+
             self.directive_vars[code] = var
             cb = ttk.Checkbutton(
-                self.directives_frame, text=f"{code} - {desc}", variable=var
-            )
-            cb.grid(row=i // 2, column=i % 2, sticky="w", pady=1)
+                scrollable_frame, text=f"{code} - {desc}", variable=var,
+            ).pack(anchor="w",padx=10)
+            # cb.grid(row=i // 2, column=i % 2, sticky="w", pady=1)
+        self.directive_vars["LDY"].trace_add("write", lambda e,t,c: self._on_mode_changed())
 
         # === Секция 2: Параметры процесса ===
         proc_frame = ttk.LabelFrame(
@@ -882,6 +884,16 @@ class ParamsDialog:
     def _on_var_changed(self):
         """Отслеживает изменение количества вариаций и обновляет сетку"""
         self._update_components_grid()
+
+    def _on_mode_changed(self):
+        
+        if self.directive_vars["LDY"].get():
+             self.pc_entry.configure(state="normal")
+             self.pc_entry.insert(0,"0.1")
+        else:
+             self.pc_entry.delete(0,tk.END)
+             self.pc_entry.configure(state="disabled")
+             
 
     def _on_al_changed(self):
         """Отслеживает изменение участия внешнего окислителя и обновляет сетку"""
